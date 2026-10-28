@@ -5,8 +5,11 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/
 
-# Arquivos de sistema e variáveis locais
+# Arquivos de sistema e notas privadas locais
 .DS_Store
 Thumbs.db
 *.log
 .env
+ANTIGRAVITY_HANDOVER.md
+*.local.md
+
