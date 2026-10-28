@@ -46,10 +46,11 @@
   - [x] Window hidden from main taskbar on startup (`skipTaskbar`).
   - [x] Native System Tray menu (*Settings* and *Quit*).
   - [x] Global system hotkey registration (`Ctrl + Shift + X`).
-- [ ] **Sprint 1: Screen Capture & Overlay**
-  - [ ] Fullscreen screen capture upon hotkey trigger.
-  - [ ] Frameless, always-on-top overlay display.
-  - [ ] Frozen frame canvas with visual border cues.
+- [x] **Sprint 1: Screen Capture & Overlay**
+  - [x] Fullscreen screen capture upon hotkey trigger (`xcap` crate).
+  - [x] Frameless, always-on-top overlay display.
+  - [x] Frozen frame canvas with visual border cues.
+  - [x] Smooth dismiss on <kbd>ESC</kbd> or close button.
 - [ ] **Sprint 2: Selection & Cropping Tool**
   - [ ] Mouse selection handlers with dimmed outer mask.
   - [ ] Bounding box coordinates dispatched to Rust backend.

@@ -7,17 +7,45 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="container">
-      <h1>🔎 DeskLens — Settings</h1>
-      <p class="subtitle">
-        Background engine active in system tray.
-      </p>
-      <div class="status-card">
-        <p><strong>Status:</strong> Running silently in background</p>
-        <p><strong>Global Shortcut:</strong> <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd></p>
-      </div>
-      <button id="hide-btn" type="button">Hide to System Tray</button>
-    </main>
+    <!-- Fullscreen Frozen Overlay View (Sprint 1) -->
+    <div id="overlay-view" class="overlay-container hidden">
+      <img id="frozen-image" alt="Frozen Desktop Frame" />
+      
+      <!-- Glowing Animated Frame / Lens Border -->
+      <div class="lens-frame"></div>
+
+      <!-- Top Interactive Control Bar -->
+      <header class="lens-header">
+        <div class="lens-badge">
+          <span class="lens-icon">🔎</span>
+          <strong>DeskLens</strong>
+          <span class="badge-tag">Screen Frozen</span>
+        </div>
+        <div class="lens-hint">
+          Press <kbd>ESC</kbd> to exit
+        </div>
+        <button id="close-overlay-btn" class="close-btn" title="Exit Overlay (ESC)">✕</button>
+      </header>
+    </div>
+
+    <!-- Settings / Preferences View -->
+    <div id="settings-view" class="settings-container">
+      <main class="container">
+        <h1>🔎 DeskLens — Settings</h1>
+        <p class="subtitle">
+          Background engine active in system tray.
+        </p>
+        <div class="status-card">
+          <p><strong>Status:</strong> Running silently in background</p>
+          <p><strong>Global Shortcut:</strong> <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd></p>
+        </div>
+        <div class="actions-row">
+          <button id="test-capture-btn" class="secondary-btn" type="button">Test Screen Capture</button>
+          <button id="hide-btn" class="primary-btn" type="button">Hide to System Tray</button>
+        </div>
+      </main>
+    </div>
+
     <script type="module" src="main.js"></script>
   </body>
 </html>

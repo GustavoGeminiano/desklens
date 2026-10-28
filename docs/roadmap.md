@@ -14,13 +14,14 @@ This document structures the development of DeskLens into actionable, incrementa
 
 ---
 
-### Sprint 1: Screen Capture & Overlay (Visual Experience)
+### Sprint 1: Screen Capture & Overlay (Visual Experience) ✅
 **Goal:** Freeze the active screen and display the DeskLens capture interface.
 
-- [ ] **Step 1:** Capture full-resolution screenshot across active monitors upon shortcut trigger (using `xcap` crate in Rust).
-- [ ] **Step 2:** Encode the captured frame (or store in temporary cache) and pass to frontend.
-- [ ] **Step 3:** Display the main Tauri window in fullscreen, frameless, and always-on-top mode.
-- [ ] **Step 4:** Render the frozen frame as a static background with animated decorative borders indicating active capture mode.
+- [x] **Step 1:** Capture full-resolution screenshot across active monitors upon shortcut trigger (using `xcap` crate in Rust).
+- [x] **Step 2:** Encode the captured frame (or store in temporary cache) and pass to frontend.
+- [x] **Step 3:** Display the main Tauri window in fullscreen, frameless, and always-on-top mode.
+- [x] **Step 4:** Render the frozen frame as a static background with animated decorative borders indicating active capture mode.
+- [x] **Step 5:** Allow immediate dismiss on <kbd>ESC</kbd> or close button to return to silent background.
 
 ---
 
