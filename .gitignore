@@ -1,0 +1,12 @@
+# Dependências Node
+node_modules/
+
+# Build e cache do Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Arquivos de sistema e variáveis locais
+.DS_Store
+Thumbs.db
+*.log
+.env
