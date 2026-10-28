@@ -36,12 +36,13 @@ This document structures the development of DeskLens into actionable, incrementa
 
 ---
 
-### Sprint 3: Integrated Visual Search
+### Sprint 3: Integrated Visual Search ✅
 **Goal:** Perform reverse image lookup and display results inside a dedicated application WebView.
 
-- [ ] **Step 1:** Open a compact side-panel window upon completing selection.
-- [ ] **Step 2:** Prepare cropped image payload and dispatch query to Google Lens web endpoint.
-- [ ] **Step 3:** Render query results inside the embedded WebView without external browser dependencies.
+- [x] **Step 1:** Open a compact side-panel window (`results.html`) upon clicking search on any crop selection.
+- [x] **Step 2:** Automatically dismiss fullscreen capture overlay and focus the visual search side-panel.
+- [x] **Step 3:** Display high-resolution cropped preview with pixel dimensions and search provider cards (Google Lens, Google Images, Bing Visual).
+- [x] **Step 4:** Provide one-click clipboard copying (`image/png`), local PNG saving, and instant web launch.
 
 ---
 

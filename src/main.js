@@ -214,11 +214,19 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (searchActionBtn) {
-    searchActionBtn.addEventListener("click", (e) => {
+    searchActionBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      console.log("🔍 Search triggered with crop payload:", currentCropDataUrl?.slice(0, 50));
-      // Sprint 3 will open the integrated side-panel webview with this cropped image
-      alert("✨ Ready for Sprint 3 (Integrated Visual Search with Google Lens)!");
+      if (!currentCropDataUrl) return;
+
+      if (window.__TAURI__?.core?.invoke) {
+        try {
+          await window.__TAURI__.core.invoke("open_visual_search", {
+            cropDataUrl: currentCropDataUrl,
+          });
+        } catch (err) {
+          console.error("Failed to open visual search panel:", err);
+        }
+      }
     });
   }
 

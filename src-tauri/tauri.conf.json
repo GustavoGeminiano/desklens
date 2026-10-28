@@ -20,6 +20,18 @@
         "decorations": false,
         "hiddenTitle": true,
         "alwaysOnTop": true
+      },
+      {
+        "label": "results",
+        "title": "DeskLens — Visual Search",
+        "width": 520,
+        "height": 780,
+        "center": false,
+        "visible": false,
+        "skipTaskbar": false,
+        "decorations": true,
+        "alwaysOnTop": true,
+        "url": "results.html"
       }
     ],
     "security": {

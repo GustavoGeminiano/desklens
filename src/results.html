@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeskLens — Visual Search</title>
+    <link rel="stylesheet" href="results.css" />
+  </head>
+  <body>
+    <div class="results-layout">
+      <!-- Top Header -->
+      <header class="results-header">
+        <div class="brand">
+          <span class="icon">🔎</span>
+          <div>
+            <strong>DeskLens</strong>
+            <span class="tag">Visual Search</span>
+          </div>
+        </div>
+        <button id="close-results-btn" class="icon-btn" title="Close Panel">✕</button>
+      </header>
+
+      <!-- Cropped Image Preview Section -->
+      <section class="crop-section">
+        <div class="crop-card">
+          <img id="results-thumb" alt="Cropped search query" />
+        </div>
+        <div class="crop-meta">
+          <span id="crop-resolution" class="meta-badge">0 × 0 px</span>
+          <span id="crop-status" class="meta-badge active">Crop Ready</span>
+        </div>
+      </section>
+
+      <!-- Quick Action Toolbar -->
+      <section class="quick-actions">
+        <button id="copy-img-btn" class="action-btn">
+          <span>📋</span> Copy Image
+        </button>
+        <button id="save-img-btn" class="action-btn">
+          <span>💾</span> Save PNG
+        </button>
+        <button id="open-lens-btn" class="action-btn primary">
+          <span>🔍</span> Google Lens Web
+        </button>
+      </section>
+
+      <!-- Embedded Search Engine Options -->
+      <section class="search-engines">
+        <h3>Search Providers</h3>
+        <div class="provider-list">
+          <a id="provider-google-lens" class="provider-card active" href="#" target="_blank">
+            <div class="provider-info">
+              <span class="provider-icon">🌐</span>
+              <div>
+                <strong>Google Lens</strong>
+                <p>AI Visual matching & product lookup</p>
+              </div>
+            </div>
+            <span class="arrow">→</span>
+          </a>
+
+          <a id="provider-google-images" class="provider-card" href="https://images.google.com" target="_blank">
+            <div class="provider-info">
+              <span class="provider-icon">🖼️</span>
+              <div>
+                <strong>Google Images</strong>
+                <p>Reverse image search & related photos</p>
+              </div>
+            </div>
+            <span class="arrow">→</span>
+          </a>
+
+          <a id="provider-bing-visual" class="provider-card" href="https://www.bing.com/visualsearch" target="_blank">
+            <div class="provider-info">
+              <span class="provider-icon">⚡</span>
+              <div>
+                <strong>Bing Visual Search</strong>
+                <p>Fast entity & text recognition</p>
+              </div>
+            </div>
+            <span class="arrow">→</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- In-App Notification / Toast -->
+      <div id="toast" class="toast hidden">Copied to clipboard!</div>
+    </div>
+
+    <script type="module" src="results.js"></script>
+  </body>
+</html>

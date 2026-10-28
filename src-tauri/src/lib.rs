@@ -8,9 +8,10 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-/// Application state storing the latest captured raw screenshot in memory for fast cropping.
+/// Application state storing the latest captured raw screenshot and active crop in memory.
 pub struct AppState {
     pub current_screenshot: Mutex<Option<RgbaImage>>,
+    pub latest_crop: Mutex<Option<String>>,
 }
 
 /// Captures the primary display screen using xcap and returns the raw RgbaImage.
@@ -38,11 +39,13 @@ fn encode_png_data_url(image: &RgbaImage) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", encoded))
 }
 
-/// Closes the fullscreen overlay and hides the window back to the background.
+/// Closes the fullscreen overlay and hides the main window back to the background.
 #[tauri::command]
-fn hide_overlay(window: tauri::Window) {
-    let _ = window.set_fullscreen(false);
-    let _ = window.hide();
+fn hide_overlay(app_handle: tauri::AppHandle) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.set_fullscreen(false);
+        let _ = window.hide();
+    }
 }
 
 /// Allows the frontend to manually trigger a fresh screenshot.
@@ -61,9 +64,10 @@ fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String> {
     Ok(data_url)
 }
 
-/// Crops a user-selected rectangle from the current screenshot and returns the cropped slice as PNG data URL.
+/// Crops a user-selected rectangle from the current screenshot and stores it in memory.
 #[tauri::command]
 fn crop_selection(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     x: u32,
     y: u32,
@@ -109,9 +113,66 @@ fn crop_selection(
     let clamped_h = real_h.min(img_h - real_y);
 
     let cropped = image::imageops::crop_imm(image, real_x, real_y, clamped_w, clamped_h).to_image();
-    println!("✂️ [DeskLens] Successfully cropped region: {clamped_w}x{clamped_h} px (at {real_x}, {real_y})");
+    println!("✂️ [DeskLens] Successfully cropped region: {clamped_w}x{clamped_h} px");
 
-    encode_png_data_url(&cropped)
+    let data_url = encode_png_data_url(&cropped)?;
+
+    // Cache latest crop
+    if let Ok(mut crop_lock) = state.latest_crop.lock() {
+        *crop_lock = Some(data_url.clone());
+    }
+
+    // Inform results window if open
+    if let Some(results_window) = app_handle.get_webview_window("results") {
+        let _ = results_window.emit("load-search-payload", &data_url);
+    }
+
+    Ok(data_url)
+}
+
+/// Retrieves the latest cropped image data URL from state.
+#[tauri::command]
+fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
+    let guard = state
+        .latest_crop
+        .lock()
+        .map_err(|e| format!("Failed to lock crop state: {e}"))?;
+    Ok(guard.clone())
+}
+
+/// SPRINT 3: Opens the integrated side-panel Visual Search window with the cropped image.
+#[tauri::command]
+fn open_visual_search(app_handle: tauri::AppHandle, crop_data_url: String) -> Result<(), String> {
+    // 1. Hide the fullscreen capture overlay
+    if let Some(main_win) = app_handle.get_webview_window("main") {
+        let _ = main_win.set_fullscreen(false);
+        let _ = main_win.hide();
+    }
+
+    // 2. Cache crop payload in state
+    if let Some(state) = app_handle.try_state::<AppState>() {
+        if let Ok(mut crop_lock) = state.latest_crop.lock() {
+            *crop_lock = Some(crop_data_url.clone());
+        }
+    }
+
+    // 3. Display and focus the dedicated Results side-panel
+    if let Some(results_win) = app_handle.get_webview_window("results") {
+        let _ = results_win.emit("load-search-payload", &crop_data_url);
+        let _ = results_win.show();
+        let _ = results_win.set_focus();
+        println!("🔍 [DeskLens] Visual Search side-panel opened successfully.");
+    }
+
+    Ok(())
+}
+
+/// Closes the visual search results window.
+#[tauri::command]
+fn close_results_window(app_handle: tauri::AppHandle) {
+    if let Some(results_win) = app_handle.get_webview_window("results") {
+        let _ = results_win.hide();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -119,11 +180,15 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             current_screenshot: Mutex::new(None),
+            latest_crop: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             hide_overlay,
             trigger_capture,
-            crop_selection
+            crop_selection,
+            get_latest_crop,
+            open_visual_search,
+            close_results_window
         ])
         .setup(|app| {
             // On macOS, hide dock icon (Accessory mode)

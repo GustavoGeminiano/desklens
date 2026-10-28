@@ -56,9 +56,11 @@
   - [x] Bounding box coordinates dispatched to Rust backend (`crop_selection`).
   - [x] Edge handles to resize/drag selection borders.
   - [x] Floating action bar with instant cropped thumbnail preview.
-- [ ] **Sprint 3: Integrated Visual Search**
-  - [ ] Embedded side-panel WebView for search results.
-  - [ ] Image slice payload dispatched to Google Lens.
+- [x] **Sprint 3: Integrated Visual Search**
+  - [x] Dedicated side-panel WebView window (`results.html`).
+  - [x] Image slice payload dispatched with live dimensions.
+  - [x] Search provider hub (Google Lens, Google Images, Bing Visual).
+  - [x] One-click image clipboard copy and local export.
 - [ ] **Sprint 4: OCR & Text Extraction**
   - [ ] Optical character recognition engine integration.
   - [ ] Automatic system clipboard copy.
