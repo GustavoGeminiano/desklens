@@ -51,9 +51,11 @@
   - [x] Frameless, always-on-top overlay display.
   - [x] Frozen frame canvas with visual border cues.
   - [x] Smooth dismiss on <kbd>ESC</kbd> or close button.
-- [ ] **Sprint 2: Selection & Cropping Tool**
-  - [ ] Mouse selection handlers with dimmed outer mask.
-  - [ ] Bounding box coordinates dispatched to Rust backend.
+- [x] **Sprint 2: Selection & Cropping Tool**
+  - [x] Mouse selection handlers with dimmed outer mask.
+  - [x] Bounding box coordinates dispatched to Rust backend (`crop_selection`).
+  - [x] Edge handles to resize/drag selection borders.
+  - [x] Floating action bar with instant cropped thumbnail preview.
 - [ ] **Sprint 3: Integrated Visual Search**
   - [ ] Embedded side-panel WebView for search results.
   - [ ] Image slice payload dispatched to Google Lens.

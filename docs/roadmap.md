@@ -25,13 +25,14 @@ This document structures the development of DeskLens into actionable, incrementa
 
 ---
 
-### Sprint 2: Selection & Cropping Tool
+### Sprint 2: Selection & Cropping Tool ✅
 **Goal:** Allow users to drag-select regions on screen for search or text extraction.
 
-- [ ] **Step 1:** Implement mouse event handlers (`mousedown`, `mousemove`, `mouseup`).
-- [ ] **Step 2:** Render visual selection box with darkened outer mask overlay.
-- [ ] **Step 3:** Capture selection bounding coordinates (x, y, width, height) on mouse release.
-- [ ] **Step 4:** Send coordinates to Rust backend to crop the exact image slice.
+- [x] **Step 1:** Implement mouse event handlers (`mousedown`, `mousemove`, `mouseup`) with dynamic rectangle tracking.
+- [x] **Step 2:** Render visual selection box with darkened SVG cut-out outer mask and Google Lens corner brackets.
+- [x] **Step 3:** Implement draggable edge handles allowing users to expand or shrink the crop box boundaries.
+- [x] **Step 4:** Send coordinates to Rust backend command (`crop_selection`) with display DPI scaling to crop the exact image slice.
+- [x] **Step 5:** Display floating action bar with instant cropped thumbnail preview, Google Lens search action, and OCR copy action.
 
 ---
 

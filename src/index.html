@@ -7,11 +7,12 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <!-- Fullscreen Frozen Overlay View (Sprint 1) -->
+    <!-- Fullscreen Frozen Overlay View (Sprints 1 & 2) -->
     <div id="overlay-view" class="overlay-container hidden">
+      <!-- Background Frozen Desktop Screenshot -->
       <img id="frozen-image" alt="Frozen Desktop Frame" />
       
-      <!-- Glowing Animated Frame / Lens Border -->
+      <!-- Ambient Outer Lens Glow Frame -->
       <div class="lens-frame"></div>
 
       <!-- Top Interactive Control Bar -->
@@ -19,13 +20,63 @@
         <div class="lens-badge">
           <span class="lens-icon">🔎</span>
           <strong>DeskLens</strong>
-          <span class="badge-tag">Screen Frozen</span>
+          <span class="badge-tag">Drag to Select</span>
         </div>
         <div class="lens-hint">
-          Press <kbd>ESC</kbd> to exit
+          Drag to crop • Press <kbd>ESC</kbd> to exit
         </div>
         <button id="close-overlay-btn" class="close-btn" title="Exit Overlay (ESC)">✕</button>
       </header>
+
+      <!-- Interactive Selection & Cropping Layer (Sprint 2) -->
+      <div id="selection-layer" class="selection-layer">
+        <!-- Dimmed Outer Mask (SVG cut-out) -->
+        <svg id="mask-svg" class="mask-svg">
+          <defs>
+            <mask id="cutout-mask">
+              <!-- White background reveals dimming -->
+              <rect width="100%" height="100%" fill="white" />
+              <!-- Black cutout reveals original clear screen -->
+              <rect id="mask-cutout" x="0" y="0" width="0" height="0" fill="black" />
+            </mask>
+          </defs>
+          <rect width="100%" height="100%" fill="rgba(0, 0, 0, 0.55)" mask="url(#cutout-mask)" />
+        </svg>
+
+        <!-- Interactive Crop Box -->
+        <div id="crop-box" class="crop-box hidden">
+          <!-- 4 Corner Google Lens Brackets -->
+          <div class="corner-bracket tl"></div>
+          <div class="corner-bracket tr"></div>
+          <div class="corner-bracket bl"></div>
+          <div class="corner-bracket br"></div>
+
+          <!-- 4 Edge Drag Handles -->
+          <div class="edge-handle top" data-handle="top"></div>
+          <div class="edge-handle bottom" data-handle="bottom"></div>
+          <div class="edge-handle left" data-handle="left"></div>
+          <div class="edge-handle right" data-handle="right"></div>
+
+          <!-- Live Dimension Tooltip -->
+          <div id="crop-dimensions" class="crop-dimensions">0 × 0 px</div>
+
+          <!-- Floating Action Bar (Anchored near selection) -->
+          <div id="crop-actions" class="crop-actions hidden">
+            <div class="preview-chip">
+              <img id="crop-preview-thumb" alt="Crop preview" />
+            </div>
+            <button id="search-action-btn" class="action-btn primary" title="Search with Google Lens">
+              <span>🔍</span> Search Image
+            </button>
+            <button id="ocr-action-btn" class="action-btn secondary" title="Extract text via OCR">
+              <span>📝</span> Copy Text
+            </button>
+            <button id="clear-action-btn" class="action-btn ghost" title="Clear selection">
+              <span>🔄</span> Clear
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Settings / Preferences View -->

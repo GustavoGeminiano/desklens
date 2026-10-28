@@ -1,4 +1,6 @@
 use base64::Engine;
+use image::RgbaImage;
+use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -6,8 +8,13 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-/// Captures the primary display screen using xcap and returns it as a Base64-encoded PNG Data URL.
-fn capture_screen() -> Result<String, String> {
+/// Application state storing the latest captured raw screenshot in memory for fast cropping.
+pub struct AppState {
+    pub current_screenshot: Mutex<Option<RgbaImage>>,
+}
+
+/// Captures the primary display screen using xcap and returns the raw RgbaImage.
+fn capture_screen_raw() -> Result<RgbaImage, String> {
     let monitors = xcap::Monitor::all().map_err(|e| format!("Failed to list monitors: {e}"))?;
     let monitor = monitors
         .into_iter()
@@ -15,10 +22,13 @@ fn capture_screen() -> Result<String, String> {
         .or_else(|| xcap::Monitor::all().ok()?.into_iter().next())
         .ok_or_else(|| "No active monitor found".to_string())?;
 
-    let image = monitor
+    monitor
         .capture_image()
-        .map_err(|e| format!("Failed to capture screen image: {e}"))?;
+        .map_err(|e| format!("Failed to capture screen image: {e}"))
+}
 
+/// Helper to encode an RgbaImage into a base64 PNG data URL.
+fn encode_png_data_url(image: &RgbaImage) -> Result<String, String> {
     let mut buffer = std::io::Cursor::new(Vec::new());
     image
         .write_to(&mut buffer, image::ImageFormat::Png)
@@ -35,23 +45,93 @@ fn hide_overlay(window: tauri::Window) {
     let _ = window.hide();
 }
 
-/// Allows the frontend to manually request a fresh screenshot.
+/// Allows the frontend to manually trigger a fresh screenshot.
 #[tauri::command]
-fn trigger_capture() -> Result<String, String> {
-    capture_screen()
+fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let raw_image = capture_screen_raw()?;
+    let data_url = encode_png_data_url(&raw_image)?;
+
+    // Store in state for subsequent crops
+    if let Some(state) = app_handle.try_state::<AppState>() {
+        if let Ok(mut lock) = state.current_screenshot.lock() {
+            *lock = Some(raw_image);
+        }
+    }
+
+    Ok(data_url)
+}
+
+/// Crops a user-selected rectangle from the current screenshot and returns the cropped slice as PNG data URL.
+#[tauri::command]
+fn crop_selection(
+    state: tauri::State<'_, AppState>,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    screen_width: u32,
+    screen_height: u32,
+) -> Result<String, String> {
+    let guard = state
+        .current_screenshot
+        .lock()
+        .map_err(|e| format!("Failed to lock screenshot state: {e}"))?;
+
+    let image = guard
+        .as_ref()
+        .ok_or_else(|| "No active screenshot stored for cropping".to_string())?;
+
+    let img_w = image.width();
+    let img_h = image.height();
+
+    // Scale calculation to handle Windows/Linux Display Scaling (e.g. 125%, 150%, 200%)
+    let scale_x = if screen_width > 0 {
+        img_w as f64 / screen_width as f64
+    } else {
+        1.0
+    };
+    let scale_y = if screen_height > 0 {
+        img_h as f64 / screen_height as f64
+    } else {
+        1.0
+    };
+
+    let real_x = ((x as f64) * scale_x).round() as u32;
+    let real_y = ((y as f64) * scale_y).round() as u32;
+    let real_w = ((width as f64) * scale_x).round() as u32;
+    let real_h = ((height as f64) * scale_y).round() as u32;
+
+    if real_x >= img_w || real_y >= img_h || real_w == 0 || real_h == 0 {
+        return Err("Invalid selection dimensions".to_string());
+    }
+
+    let clamped_w = real_w.min(img_w - real_x);
+    let clamped_h = real_h.min(img_h - real_y);
+
+    let cropped = image::imageops::crop_imm(image, real_x, real_y, clamped_w, clamped_h).to_image();
+    println!("✂️ [DeskLens] Successfully cropped region: {clamped_w}x{clamped_h} px (at {real_x}, {real_y})");
+
+    encode_png_data_url(&cropped)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![hide_overlay, trigger_capture])
+        .manage(AppState {
+            current_screenshot: Mutex::new(None),
+        })
+        .invoke_handler(tauri::generate_handler![
+            hide_overlay,
+            trigger_capture,
+            crop_selection
+        ])
         .setup(|app| {
             // On macOS, hide dock icon (Accessory mode)
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // =========================================================================
-            // STEP 3: System Tray with Interactive Menu
+            // SYSTEM TRAY: Interactive Menu (Settings & Quit)
             // =========================================================================
             let settings_item = MenuItem::with_id(
                 app,
@@ -98,37 +178,48 @@ pub fn run() {
             let _tray = tray_builder.build(app)?;
 
             // =========================================================================
-            // SPRINT 1: Global Hotkey & Screen Capture Overlay
+            // GLOBAL HOTKEY: Ctrl + Shift + X (Capture & Overlay)
             // =========================================================================
             let ctrl_shift_x = Shortcut::new(
                 Some(Modifiers::CONTROL | Modifiers::SHIFT),
                 Code::KeyX,
             );
 
+            let app_handle = app.handle().clone();
+
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
-                    .with_handler(move |app_handle, shortcut, event| {
+                    .with_handler(move |_app, shortcut, event| {
                         if shortcut == &ctrl_shift_x && event.state() == ShortcutState::Pressed {
                             println!(
                                 "🎯 [DeskLens] Global shortcut (Ctrl + Shift + X) triggered! Capturing screen..."
                             );
 
                             if let Some(window) = app_handle.get_webview_window("main") {
-                                // 1. Capture screen before opening window
-                                match capture_screen() {
-                                    Ok(screenshot_url) => {
-                                        // 2. Dispatch captured image to frontend
-                                        let _ = window.emit("screenshot-captured", &screenshot_url);
-                                        let _ = window.emit("view-mode", "overlay");
+                                // 1. Capture clean screen before opening overlay
+                                match capture_screen_raw() {
+                                    Ok(raw_image) => {
+                                        if let Ok(data_url) = encode_png_data_url(&raw_image) {
+                                            // Store image in AppState for instant cropping
+                                            if let Some(state) = app_handle.try_state::<AppState>() {
+                                                if let Ok(mut lock) = state.current_screenshot.lock() {
+                                                    *lock = Some(raw_image);
+                                                }
+                                            }
 
-                                        // 3. Make window fullscreen, always on top and visible
-                                        let _ = window.set_fullscreen(true);
-                                        let _ = window.set_always_on_top(true);
-                                        let _ = window.show();
-                                        let _ = window.set_focus();
-                                        println!(
-                                            "✨ [DeskLens] Screen captured and overlay active."
-                                        );
+                                            // 2. Dispatch captured image to frontend
+                                            let _ = window.emit("screenshot-captured", &data_url);
+                                            let _ = window.emit("view-mode", "overlay");
+
+                                            // 3. Make window fullscreen, always on top and visible
+                                            let _ = window.set_fullscreen(true);
+                                            let _ = window.set_always_on_top(true);
+                                            let _ = window.show();
+                                            let _ = window.set_focus();
+                                            println!(
+                                                "✨ [DeskLens] Screen captured and overlay active."
+                                            );
+                                        }
                                     }
                                     Err(err) => {
                                         eprintln!("❌ [DeskLens] Error capturing screen: {err}");
