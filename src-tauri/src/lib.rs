@@ -68,12 +68,14 @@ fn write_crop_to_temp_file(state: &tauri::State<'_, AppState>) -> Result<PathBuf
     Ok(temp_path)
 }
 
-/// Opens an external HTTP/HTTPS URL in the user's default system browser without blocking.
+/// Opens an external HTTP/HTTPS URL in the user's default system browser without truncation or blocking.
 fn open_external_url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = Command::new("rundll32.exe");
-        cmd.args(["url.dll,FileProtocolHandler", url]);
+        let escaped_url = url.replace('\'', "''");
+        let ps_cmd = format!("Start-Process '{}'", escaped_url);
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &ps_cmd]);
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd.spawn()
             .map_err(|e| format!("Failed to launch default browser on Windows: {e}"))?;
@@ -284,115 +286,101 @@ async fn open_visual_search(
     Ok(())
 }
 
-/// Simple URL-encoder for query parameter values (RFC 3986).
-fn url_encode(input: &str) -> String {
-    let mut encoded = String::with_capacity(input.len() * 3);
-    for byte in input.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(byte as char);
-            }
-            _ => {
-                encoded.push_str(&format!("%{:02X}", byte));
-            }
-        }
-    }
-    encoded
-}
+/// Uploads the cropped image directly to Google Lens and opens the resulting visual matches in the default browser.
+#[tauri::command]
+async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let (temp_path, width, height) = {
+        let guard = state
+            .latest_crop_image
+            .lock()
+            .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
 
-/// Uploads the temporary cropped PNG to an ephemeral 1-hour image host so the user's browser
-/// can navigate to `https://lens.google.com/uploadbyurl?url=...` via a native GET request
-/// using the browser's own Google cookies/session (avoiding cross-origin POST 403 and session mismatch).
-fn upload_ephemeral_image(temp_path: &PathBuf) -> Result<String, String> {
+        let image = guard
+            .as_ref()
+            .ok_or_else(|| "No cropped image available".to_string())?;
+
+        let temp_path = std::env::temp_dir().join("desklens_latest_crop.png");
+        image
+            .save_with_format(&temp_path, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to save temporary crop PNG: {e}"))?;
+
+        (temp_path, image.width(), image.height())
+    };
+
+    let _ = copy_file_to_os_clipboard(&temp_path);
     let temp_path_str = temp_path.to_string_lossy().to_string();
+
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(1729000000000);
+
+    let upload_url = format!(
+        "https://lens.google.com/v3/upload?ep=gsbubb&st={timestamp_ms}&hl=pt-BR&vpw=1280&vph=720"
+    );
+
+    let form_file = format!("encoded_image=@{temp_path_str};type=image/png;filename=crop.png");
+    let form_dims = format!("processed_image_dimensions={width},{height}");
+
+    println!("🌐 [DeskLens] Uploading cropped slice to Google Lens...");
 
     #[cfg(target_os = "windows")]
     let curl_bin = "curl.exe";
     #[cfg(not(target_os = "windows"))]
     let curl_bin = "curl";
 
-    // 1. Primary ephemeral host: Litterbox (auto-deletes after 1 hour)
-    let file_arg = format!("fileToUpload=@{}", temp_path_str);
     let mut cmd = Command::new(curl_bin);
     cmd.args([
         "-s",
         "--max-time",
         "12",
+        "-o",
+        if cfg!(target_os = "windows") {
+            "NUL"
+        } else {
+            "/dev/null"
+        },
+        "-w",
+        "%{redirect_url}",
+        "-H",
+        "Origin: https://www.google.com",
+        "-H",
+        "Referer: https://www.google.com/",
+        "-A",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "-F",
-        "reqtype=fileupload",
+        &form_file,
         "-F",
-        "time=1h",
-        "-F",
-        &file_arg,
-        "https://litterbox.catbox.moe/resources/internals/api.php",
+        &form_dims,
+        &upload_url,
     ]);
 
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
-    if let Ok(output) = cmd.output() {
-        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if url.starts_with("https://") {
-            return Ok(url);
-        }
-    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute Google Lens upload: {e}"))?;
 
-    // 2. Fallback ephemeral host: 0x0.st (auto-deletes after 1 hour)
-    let fallback_arg = format!("file=@{}", temp_path_str);
-    let mut fallback_cmd = Command::new(curl_bin);
-    fallback_cmd.args([
-        "-s",
-        "--max-time",
-        "12",
-        "-A",
-        "DeskLens/0.1.0",
-        "-F",
-        &fallback_arg,
-        "-F",
-        "expires=1",
-        "https://0x0.st",
-    ]);
+    let redirect_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    #[cfg(target_os = "windows")]
-    fallback_cmd.creation_flags(CREATE_NO_WINDOW);
-
-    if let Ok(output) = fallback_cmd.output() {
-        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if url.starts_with("https://") {
-            return Ok(url);
-        }
-    }
-
-    Err("Failed to upload temporary image to ephemeral bridge".to_string())
-}
-
-/// Uploads the cropped image to an ephemeral 1-hour URL and opens `https://lens.google.com/uploadbyurl?url=...`
-/// directly in the user's default browser so Google Lens processes the image within the user's own browser session.
-#[tauri::command]
-async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let temp_path = write_crop_to_temp_file(&state)?;
-    let _ = copy_file_to_os_clipboard(&temp_path);
-
-    println!("🌐 [DeskLens] Preparing cropped slice for Google Lens...");
-
-    match upload_ephemeral_image(&temp_path) {
-        Ok(public_img_url) => {
-            let encoded_url = url_encode(&public_img_url);
-            let lens_url = format!("https://lens.google.com/uploadbyurl?url={encoded_url}");
-            println!("✅ [DeskLens] Opening Google Lens URL: {lens_url}");
-            open_external_url(&lens_url)?;
-            Ok(lens_url)
-        }
-        Err(err) => {
-            eprintln!("⚠️ [DeskLens] Ephemeral upload failed ({err}), opening Google Lens upload modal...");
-            let fallback_url = "https://www.google.com/?olud";
-            open_external_url(fallback_url)?;
-            Ok(fallback_url.to_string())
-        }
+    if redirect_url.starts_with("http") {
+        println!(
+            "✅ [DeskLens] Google Lens results URL generated (len {}): {}",
+            redirect_url.len(),
+            &redirect_url[..redirect_url.len().min(80)]
+        );
+        open_external_url(&redirect_url)?;
+        Ok(redirect_url)
+    } else {
+        println!("⚠️ [DeskLens] Fallback to Google Lens web");
+        let fallback = "https://lens.google.com/";
+        open_external_url(fallback)?;
+        Ok(fallback.to_string())
     }
 }
 
-/// Copies the cropped image to the system clipboard and opens the chosen visual search provider in the default browser.
+/// Copies the cropped image to the system clipboard and opens Google Images in the default browser.
 #[tauri::command]
 async fn open_search_provider(
     state: tauri::State<'_, AppState>,
@@ -403,9 +391,8 @@ async fn open_search_provider(
     }
 
     let url = match provider.as_str() {
-        "google-images" => "https://www.google.com/?olud",
-        "bing-visual" => "https://www.bing.com/visualsearch",
-        _ => "https://www.google.com/?olud",
+        "google-images" => "https://images.google.com/",
+        _ => "https://lens.google.com/",
     };
 
     open_external_url(url)
