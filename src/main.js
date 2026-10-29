@@ -279,10 +279,37 @@ window.addEventListener("DOMContentLoaded", async () => {
     ocrActionBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const originalHtml = ocrActionBtn.innerHTML;
-      ocrActionBtn.innerHTML = "<span>✨</span> Sprint 4 (OCR) Next!";
-      setTimeout(() => {
-        ocrActionBtn.innerHTML = originalHtml;
-      }, 2000);
+      ocrActionBtn.innerHTML = "<span>⏳</span> Reading text...";
+
+      try {
+        if (!currentCropDataUrl) {
+          await requestBackendCrop();
+        }
+
+        if (window.__TAURI__?.core?.invoke) {
+          const extractedText = await window.__TAURI__.core.invoke("copy_text_from_crop");
+          if (extractedText && extractedText.trim().length > 0) {
+            ocrActionBtn.innerHTML = "<span>✅</span> Text Copied!";
+            try {
+              await navigator.clipboard.writeText(extractedText);
+            } catch (_) {}
+            setTimeout(() => {
+              hideOverlay();
+            }, 600);
+          } else {
+            ocrActionBtn.innerHTML = "<span>⚠️</span> No text found";
+            setTimeout(() => {
+              ocrActionBtn.innerHTML = originalHtml;
+            }, 1800);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to copy OCR text:", err);
+        ocrActionBtn.innerHTML = "<span>⚠️</span> OCR Error";
+        setTimeout(() => {
+          ocrActionBtn.innerHTML = originalHtml;
+        }, 1800);
+      }
     });
   }
 

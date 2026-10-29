@@ -11,6 +11,8 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+pub mod ocr;
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -227,7 +229,7 @@ async fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<Str
 /// Must be called from an async command so WebView2 creation never blocks the main UI thread.
 fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(win) = app_handle.get_webview_window("results") {
-        let _ = win.set_size(tauri::LogicalSize::new(400.0, 560.0));
+        let _ = win.set_size(tauri::LogicalSize::new(400.0, 600.0));
         return Ok(win);
     }
 
@@ -237,7 +239,7 @@ fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::Webview
         WebviewUrl::App("results.html".into()),
     )
     .title("DeskLens — Visual Search")
-    .inner_size(400.0, 560.0)
+    .inner_size(400.0, 600.0)
     .always_on_top(true)
     .decorations(true)
     .visible(true)
@@ -454,6 +456,72 @@ async fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, 
     Ok(path_str)
 }
 
+/// Copies plain text to the native operating system clipboard.
+pub fn copy_plain_text_to_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::ApplicationModel::DataTransfer::{Clipboard, DataPackage};
+        let package =
+            DataPackage::new().map_err(|e| format!("Failed to create DataPackage: {e}"))?;
+        package
+            .SetText(&windows::core::HSTRING::from(text))
+            .map_err(|e| format!("Failed to set clipboard text: {e}"))?;
+        Clipboard::SetContent(&package)
+            .map_err(|e| format!("Failed to set clipboard content: {e}"))?;
+        let _ = Clipboard::Flush();
+    }
+    Ok(())
+}
+
+/// SPRINT 4: Extracts text and bounding boxes from the latest cropped image using native OS OCR.
+#[tauri::command]
+async fn extract_text_from_crop(
+    state: tauri::State<'_, AppState>,
+) -> Result<ocr::OcrResult, String> {
+    let guard = state
+        .latest_crop_image
+        .lock()
+        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
+
+    let image = guard
+        .as_ref()
+        .ok_or_else(|| "No cropped image available for OCR".to_string())?;
+
+    let result = ocr::extract_text_native(image)?;
+    println!(
+        "📝 [DeskLens] OCR extracted {} lines ({} words)",
+        result.lines.len(),
+        result.word_count
+    );
+    Ok(result)
+}
+
+/// SPRINT 4: Extracts text from the crop and immediately copies it to the system clipboard.
+#[tauri::command]
+async fn copy_text_from_crop(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let guard = state
+        .latest_crop_image
+        .lock()
+        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
+
+    let image = guard
+        .as_ref()
+        .ok_or_else(|| "No cropped image available for OCR".to_string())?;
+
+    let result = ocr::extract_text_native(image)?;
+    let text = result.full_text.trim().to_string();
+
+    if !text.is_empty() {
+        copy_plain_text_to_clipboard(&text)?;
+        println!(
+            "📋 [DeskLens] OCR text copied to clipboard: '{}'",
+            text.chars().take(40).collect::<String>()
+        );
+    }
+
+    Ok(text)
+}
+
 /// Closes the visual search results window.
 #[tauri::command]
 async fn close_results_window(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -492,7 +560,9 @@ pub fn run() {
             open_search_provider,
             copy_crop_to_clipboard,
             save_crop_to_disk,
-            close_results_window
+            close_results_window,
+            extract_text_from_crop,
+            copy_text_from_crop
         ])
         .setup(|app| {
             // On macOS, hide dock icon (Accessory mode)

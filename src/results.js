@@ -10,9 +10,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   const openLensBtn = document.getElementById("open-lens-btn");
   const providerGoogleLens = document.getElementById("provider-google-lens");
   const providerGoogleImages = document.getElementById("provider-google-images");
+  const ocrTextBox = document.getElementById("ocr-text-box");
+  const ocrWordCount = document.getElementById("ocr-word-count");
+  const copyOcrBtn = document.getElementById("copy-ocr-btn");
   const toast = document.getElementById("toast");
 
   let currentDataUrl = null;
+  let latestExtractedText = "";
   let toastTimeout = null;
 
   function showToast(message, durationMs = 3000) {
@@ -41,6 +45,32 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     };
     img.src = dataUrl;
+
+    // Automatically trigger native OCR on the new crop
+    triggerOcrDetection();
+  }
+
+  // Trigger native OS OCR text recognition
+  async function triggerOcrDetection() {
+    if (!window.__TAURI__?.core?.invoke) return;
+    if (ocrTextBox) {
+      ocrTextBox.value = "Detecting text with Windows OCR...";
+    }
+    try {
+      const result = await window.__TAURI__.core.invoke("extract_text_from_crop");
+      if (result && result.full_text && result.full_text.trim().length > 0) {
+        latestExtractedText = result.full_text.trim();
+        if (ocrTextBox) ocrTextBox.value = latestExtractedText;
+        if (ocrWordCount) ocrWordCount.textContent = `${result.word_count} word${result.word_count === 1 ? "" : "s"}`;
+      } else {
+        latestExtractedText = "";
+        if (ocrTextBox) ocrTextBox.value = "No text detected in this image.";
+        if (ocrWordCount) ocrWordCount.textContent = "0 words";
+      }
+    } catch (err) {
+      console.warn("OCR recognition error:", err);
+      if (ocrTextBox) ocrTextBox.value = "Text recognition error.";
+    }
   }
 
   // Fetch latest crop from Rust backend state
@@ -55,6 +85,22 @@ window.addEventListener("DOMContentLoaded", async () => {
         console.warn("Could not retrieve cached crop:", err);
       }
     }
+  }
+
+  // Copy recognized OCR text to clipboard
+  if (copyOcrBtn) {
+    copyOcrBtn.addEventListener("click", async () => {
+      if (!latestExtractedText) {
+        showToast("⚠️ No text to copy");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(latestExtractedText);
+        showToast("✅ Text copied to clipboard!");
+      } catch (err) {
+        console.error("Clipboard copy failed:", err);
+      }
+    });
   }
 
   // 1. Fetch latest crop on initialization, focus, and visibility changes
