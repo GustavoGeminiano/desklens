@@ -33,13 +33,13 @@
 
       <!-- Quick Action Toolbar -->
       <section class="quick-actions">
-        <button id="copy-img-btn" class="action-btn">
+        <button id="copy-img-btn" type="button" class="action-btn">
           <span>📋</span> Copy Image
         </button>
-        <button id="save-img-btn" class="action-btn">
+        <button id="save-img-btn" type="button" class="action-btn">
           <span>💾</span> Save PNG
         </button>
-        <button id="open-lens-btn" class="action-btn primary">
+        <button id="open-lens-btn" type="button" class="action-btn primary">
           <span>🔍</span> Google Lens Web
         </button>
       </section>
@@ -48,38 +48,38 @@
       <section class="search-engines">
         <h3>Search Providers</h3>
         <div class="provider-list">
-          <a id="provider-google-lens" class="provider-card active" href="#" target="_blank">
+          <button id="provider-google-lens" type="button" class="provider-card active">
             <div class="provider-info">
               <span class="provider-icon">🌐</span>
               <div>
-                <strong>Google Lens</strong>
-                <p>AI Visual matching & product lookup</p>
+                <strong>Google Lens (Auto-Upload)</strong>
+                <p>Uploads crop directly &amp; opens visual matches</p>
               </div>
             </div>
             <span class="arrow">→</span>
-          </a>
+          </button>
 
-          <a id="provider-google-images" class="provider-card" href="https://images.google.com" target="_blank">
+          <button id="provider-google-images" type="button" class="provider-card">
             <div class="provider-info">
               <span class="provider-icon">🖼️</span>
               <div>
                 <strong>Google Images</strong>
-                <p>Reverse image search & related photos</p>
+                <p>Copies crop to clipboard &amp; opens reverse search</p>
               </div>
             </div>
             <span class="arrow">→</span>
-          </a>
+          </button>
 
-          <a id="provider-bing-visual" class="provider-card" href="https://www.bing.com/visualsearch" target="_blank">
+          <button id="provider-bing-visual" type="button" class="provider-card">
             <div class="provider-info">
               <span class="provider-icon">⚡</span>
               <div>
                 <strong>Bing Visual Search</strong>
-                <p>Fast entity & text recognition</p>
+                <p>Copies crop to clipboard &amp; opens Bing Vision</p>
               </div>
             </div>
             <span class="arrow">→</span>
-          </a>
+          </button>
         </div>
       </section>
 

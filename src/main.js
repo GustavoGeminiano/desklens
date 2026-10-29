@@ -87,7 +87,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Request backend Rust to crop the selected frame slice
   async function requestBackendCrop() {
-    if (currentRect.w < 20 || currentRect.h < 20) return;
+    if (currentRect.w < 20 || currentRect.h < 20) return null;
 
     if (window.__TAURI__?.core?.invoke) {
       try {
@@ -105,11 +105,13 @@ window.addEventListener("DOMContentLoaded", async () => {
           if (cropPreviewThumb) {
             cropPreviewThumb.src = croppedDataUrl;
           }
+          return croppedDataUrl;
         }
       } catch (err) {
         console.error("Failed to crop selection:", err);
       }
     }
+    return null;
   }
 
   // Position floating action toolbar near the selection
@@ -205,6 +207,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Prevent pointer/mouse events on floating toolbar from bubbling to selectionLayer
+  if (cropActions) {
+    ["mousedown", "mouseup", "pointerdown", "click"].forEach((evtName) => {
+      cropActions.addEventListener(evtName, (e) => {
+        e.stopPropagation();
+      });
+    });
+  }
+
   // Action Buttons
   if (clearActionBtn) {
     clearActionBtn.addEventListener("click", (e) => {
@@ -216,26 +227,37 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (searchActionBtn) {
     searchActionBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!currentCropDataUrl) return;
+      const originalHtml = searchActionBtn.innerHTML;
+      searchActionBtn.innerHTML = "<span>⏳</span> Opening...";
 
-      if (window.__TAURI__?.core?.invoke) {
-        try {
+      try {
+        if (!currentCropDataUrl) {
+          await requestBackendCrop();
+        }
+
+        if (window.__TAURI__?.core?.invoke) {
           await window.__TAURI__.core.invoke("open_visual_search", {
             cropDataUrl: currentCropDataUrl,
           });
-        } catch (err) {
-          console.error("Failed to open visual search panel:", err);
+          clearSelection();
+          setViewMode("settings");
         }
+      } catch (err) {
+        console.error("Failed to open visual search panel:", err);
+      } finally {
+        searchActionBtn.innerHTML = originalHtml;
       }
     });
   }
 
   if (ocrActionBtn) {
-    ocrActionBtn.addEventListener("click", (e) => {
+    ocrActionBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      console.log("📝 OCR copy triggered with crop payload:", currentCropDataUrl?.slice(0, 50));
-      // Sprint 4 will run OCR and copy directly to system clipboard
-      alert("📝 Ready for Sprint 4 (OCR & Text Extraction)!");
+      const originalHtml = ocrActionBtn.innerHTML;
+      ocrActionBtn.innerHTML = "<span>✨</span> Sprint 4 (OCR) Next!";
+      setTimeout(() => {
+        ocrActionBtn.innerHTML = originalHtml;
+      }, 2000);
     });
   }
 

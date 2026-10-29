@@ -1,16 +1,26 @@
 use base64::Engine;
 use image::RgbaImage;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Emitter, Manager,
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Application state storing the latest captured raw screenshot and active crop in memory.
 pub struct AppState {
     pub current_screenshot: Mutex<Option<RgbaImage>>,
+    pub latest_crop_image: Mutex<Option<RgbaImage>>,
     pub latest_crop: Mutex<Option<String>>,
 }
 
@@ -39,6 +49,25 @@ fn encode_png_data_url(image: &RgbaImage) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", encoded))
 }
 
+/// Saves the latest cropped image to a temporary file and returns its path.
+fn write_crop_to_temp_file(state: &tauri::State<'_, AppState>) -> Result<PathBuf, String> {
+    let guard = state
+        .latest_crop_image
+        .lock()
+        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
+
+    let image = guard
+        .as_ref()
+        .ok_or_else(|| "No cropped image available".to_string())?;
+
+    let temp_path = std::env::temp_dir().join("desklens_latest_crop.png");
+    image
+        .save_with_format(&temp_path, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to save temporary crop PNG: {e}"))?;
+
+    Ok(temp_path)
+}
+
 /// Closes the fullscreen overlay and hides the main window back to the background.
 #[tauri::command]
 fn hide_overlay(app_handle: tauri::AppHandle) {
@@ -54,7 +83,6 @@ fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String> {
     let raw_image = capture_screen_raw()?;
     let data_url = encode_png_data_url(&raw_image)?;
 
-    // Store in state for subsequent crops
     if let Some(state) = app_handle.try_state::<AppState>() {
         if let Ok(mut lock) = state.current_screenshot.lock() {
             *lock = Some(raw_image);
@@ -117,15 +145,16 @@ fn crop_selection(
 
     let data_url = encode_png_data_url(&cropped)?;
 
-    // Cache latest crop
+    // Cache both raw cropped image and data URL in state
+    if let Ok(mut img_lock) = state.latest_crop_image.lock() {
+        *img_lock = Some(cropped);
+    }
     if let Ok(mut crop_lock) = state.latest_crop.lock() {
         *crop_lock = Some(data_url.clone());
     }
 
-    // Inform results window if open
-    if let Some(results_window) = app_handle.get_webview_window("results") {
-        let _ = results_window.emit("load-search-payload", &data_url);
-    }
+    // Broadcast globally so all windows receive the new payload
+    let _ = app_handle.emit("load-search-payload", &data_url);
 
     Ok(data_url)
 }
@@ -140,31 +169,247 @@ fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<String>, 
     Ok(guard.clone())
 }
 
+/// Helper to ensure the "results" side-panel window exists and is shown.
+fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+    if let Some(win) = app_handle.get_webview_window("results") {
+        return Ok(win);
+    }
+
+    WebviewWindowBuilder::new(
+        app_handle,
+        "results",
+        WebviewUrl::App("results.html".into()),
+    )
+    .title("DeskLens — Visual Search")
+    .inner_size(520.0, 780.0)
+    .always_on_top(true)
+    .decorations(true)
+    .visible(true)
+    .build()
+    .map_err(|e| format!("Failed to create results window: {e}"))
+}
+
+/// Helper to open or navigate the integrated WebView browser window ("lens-viewer").
+fn open_in_webview_window(
+    app_handle: &tauri::AppHandle,
+    url_str: &str,
+    title: &str,
+) -> Result<(), String> {
+    let parsed_url: tauri::Url = url_str
+        .parse()
+        .map_err(|e| format!("Invalid search URL: {e}"))?;
+
+    if let Some(viewer) = app_handle.get_webview_window("lens-viewer") {
+        let _ = viewer.set_title(title);
+        let _ = viewer.navigate(parsed_url);
+        let _ = viewer.show();
+        let _ = viewer.set_focus();
+    } else {
+        let viewer = WebviewWindowBuilder::new(
+            app_handle,
+            "lens-viewer",
+            WebviewUrl::External(parsed_url),
+        )
+        .title(title)
+        .inner_size(980.0, 800.0)
+        .center()
+        .decorations(true)
+        .visible(true)
+        .build()
+        .map_err(|e| format!("Failed to open integrated search viewer: {e}"))?;
+
+        let _ = viewer.set_focus();
+    }
+
+    Ok(())
+}
+
 /// SPRINT 3: Opens the integrated side-panel Visual Search window with the cropped image.
 #[tauri::command]
-fn open_visual_search(app_handle: tauri::AppHandle, crop_data_url: String) -> Result<(), String> {
+fn open_visual_search(
+    app_handle: tauri::AppHandle,
+    crop_data_url: Option<String>,
+) -> Result<(), String> {
     // 1. Hide the fullscreen capture overlay
     if let Some(main_win) = app_handle.get_webview_window("main") {
         let _ = main_win.set_fullscreen(false);
         let _ = main_win.hide();
     }
 
-    // 2. Cache crop payload in state
+    // 2. Cache crop payload in state if provided
+    let mut payload_to_send: Option<String> = None;
     if let Some(state) = app_handle.try_state::<AppState>() {
         if let Ok(mut crop_lock) = state.latest_crop.lock() {
-            *crop_lock = Some(crop_data_url.clone());
+            if let Some(url) = crop_data_url {
+                *crop_lock = Some(url.clone());
+                payload_to_send = Some(url);
+            } else {
+                payload_to_send = crop_lock.clone();
+            }
         }
     }
 
-    // 3. Display and focus the dedicated Results side-panel
-    if let Some(results_win) = app_handle.get_webview_window("results") {
-        let _ = results_win.emit("load-search-payload", &crop_data_url);
-        let _ = results_win.show();
-        let _ = results_win.set_focus();
-        println!("🔍 [DeskLens] Visual Search side-panel opened successfully.");
+    // 3. Ensure Results side-panel exists, show it, and broadcast payload
+    let results_win = ensure_results_window(&app_handle)?;
+    let _ = results_win.show();
+    let _ = results_win.set_focus();
+
+    if let Some(payload) = payload_to_send {
+        let _ = app_handle.emit("load-search-payload", &payload);
     }
 
+    println!("🔍 [DeskLens] Visual Search side-panel opened successfully.");
     Ok(())
+}
+
+/// Uploads the cropped image directly to Google Lens and opens the results in the integrated WebView window.
+#[tauri::command]
+fn search_google_lens(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let temp_path = write_crop_to_temp_file(&state)?;
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+
+    println!("🌐 [DeskLens] Uploading cropped slice to Google Lens...");
+
+    let form_arg = format!(
+        "encoded_image=@{};type=image/png;filename=crop.png",
+        temp_path_str
+    );
+
+    #[cfg(target_os = "windows")]
+    let curl_bin = "curl.exe";
+    #[cfg(not(target_os = "windows"))]
+    let curl_bin = "curl";
+
+    let mut cmd = Command::new(curl_bin);
+    cmd.args([
+        "-s",
+        "-o",
+        if cfg!(target_os = "windows") {
+            "NUL"
+        } else {
+            "/dev/null"
+        },
+        "-w",
+        "%{redirect_url}",
+        "-A",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "-F",
+        &form_arg,
+        "https://lens.google.com/v3/upload",
+    ]);
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute curl for Google Lens upload: {e}"))?;
+
+    let redirect_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let target_url = if redirect_url.starts_with("http") {
+        println!("✅ [DeskLens] Google Lens results URL generated: {redirect_url}");
+        redirect_url
+    } else {
+        println!("⚠️ [DeskLens] Fallback to Google Lens home.");
+        "https://lens.google.com/".to_string()
+    };
+
+    open_in_webview_window(&app_handle, &target_url, "DeskLens — Google Lens Results")?;
+    Ok(target_url)
+}
+
+/// Opens a visual search provider (Google Images, Bing Visual Search, etc.) inside the DeskLens WebView window
+/// after automatically copying the cropped image to the system clipboard.
+#[tauri::command]
+fn open_search_provider(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    provider: String,
+) -> Result<(), String> {
+    // Automatically copy the cropped image to the system clipboard so the user can paste (Ctrl+V) immediately
+    let _ = copy_crop_to_clipboard(state);
+
+    let (url, title) = match provider.as_str() {
+        "google-images" => ("https://images.google.com/", "DeskLens — Google Images"),
+        "bing-visual" => (
+            "https://www.bing.com/visualsearch",
+            "DeskLens — Bing Visual Search",
+        ),
+        _ => ("https://lens.google.com/", "DeskLens — Google Lens"),
+    };
+
+    open_in_webview_window(&app_handle, url, title)
+}
+
+/// Copies the cropped image directly to the native OS Clipboard.
+#[tauri::command]
+fn copy_crop_to_clipboard(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let temp_path = write_crop_to_temp_file(&state)?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()",
+            temp_path.to_string_lossy().replace('\'', "''")
+        );
+
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &ps_script]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.output()
+            .map_err(|e| format!("Failed to copy image to Windows clipboard: {e}"))?;
+    }
+
+    println!("📋 [DeskLens] Cropped image copied to system clipboard.");
+    Ok(())
+}
+
+/// Saves the cropped PNG image to the user's Pictures/DeskLens directory and highlights it in Explorer.
+#[tauri::command]
+fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let guard = state
+        .latest_crop_image
+        .lock()
+        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
+
+    let image = guard
+        .as_ref()
+        .ok_or_else(|| "No cropped image available to save".to_string())?;
+
+    let base_dir = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+
+    let save_dir = base_dir.join("Pictures").join("DeskLens");
+    std::fs::create_dir_all(&save_dir)
+        .map_err(|e| format!("Failed to create Pictures/DeskLens folder: {e}"))?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let file_path = save_dir.join(format!("desklens-crop-{timestamp}.png"));
+    image
+        .save_with_format(&file_path, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to write PNG file: {e}"))?;
+
+    let path_str = file_path.to_string_lossy().to_string();
+    println!("💾 [DeskLens] Saved cropped PNG to: {path_str}");
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("explorer.exe")
+            .arg(format!("/select,{}", path_str))
+            .spawn();
+    }
+
+    Ok(path_str)
 }
 
 /// Closes the visual search results window.
@@ -180,7 +425,19 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             current_screenshot: Mutex::new(None),
+            latest_crop_image: Mutex::new(None),
             latest_crop: Mutex::new(None),
+        })
+        .on_window_event(|window, event| {
+            // Prevent "main" and "results" windows from being destroyed when clicking the OS 'X' button
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let label = window.label();
+                if label == "main" || label == "results" {
+                    api.prevent_close();
+                    let _ = window.set_fullscreen(false);
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             hide_overlay,
@@ -188,6 +445,10 @@ pub fn run() {
             crop_selection,
             get_latest_crop,
             open_visual_search,
+            search_google_lens,
+            open_search_provider,
+            copy_crop_to_clipboard,
+            save_crop_to_disk,
             close_results_window
         ])
         .setup(|app| {
@@ -224,7 +485,7 @@ pub fn run() {
                         println!("⚙️ [DeskLens] Opening Settings window...");
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.set_fullscreen(false);
-                            let _ = window.emit("view-mode", "settings");
+                            let _ = app.emit("view-mode", "settings");
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
@@ -272,9 +533,9 @@ pub fn run() {
                                                 }
                                             }
 
-                                            // 2. Dispatch captured image to frontend
-                                            let _ = window.emit("screenshot-captured", &data_url);
-                                            let _ = window.emit("view-mode", "overlay");
+                                            // 2. Broadcast captured image globally to frontend
+                                            let _ = app_handle.emit("screenshot-captured", &data_url);
+                                            let _ = app_handle.emit("view-mode", "overlay");
 
                                             // 3. Make window fullscreen, always on top and visible
                                             let _ = window.set_fullscreen(true);

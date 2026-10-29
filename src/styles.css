@@ -279,6 +279,7 @@ html, body {
   box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7);
   z-index: 30;
   pointer-events: auto;
+  cursor: default;
   white-space: nowrap;
   animation: fadeIn 0.15s ease-out;
 }
@@ -316,6 +317,10 @@ html, body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.action-btn * {
+  pointer-events: none;
 }
 
 .action-btn.primary {
