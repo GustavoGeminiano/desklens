@@ -280,64 +280,161 @@ async fn open_visual_search(
     Ok(())
 }
 
-/// Uploads the cropped image directly to Google Lens on a background thread and opens the results in the default browser.
+/// Spawns a local one-shot HTTP bridge on 127.0.0.1:<port> that serves an auto-submitting
+/// HTML form directly inside the user's default browser.
+/// This prevents Windows `rundll32.exe` from truncating 450+ char Google Lens URLs at MAX_PATH (260 chars)
+/// and ensures the upload uses the browser's own cookies and session.
 #[tauri::command]
 async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let temp_path = write_crop_to_temp_file(&state)?;
-    let temp_path_str = temp_path.to_string_lossy().to_string();
+    let (b64_png, width, height) = {
+        let guard = state
+            .latest_crop_image
+            .lock()
+            .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
 
-    println!("🌐 [DeskLens] Uploading cropped slice to Google Lens...");
+        let image = guard
+            .as_ref()
+            .ok_or_else(|| "No cropped image available".to_string())?;
 
-    let form_arg = format!(
-        "encoded_image=@{};type=image/png;filename=crop.png",
-        temp_path_str
-    );
+        let mut buffer = std::io::Cursor::new(Vec::new());
+        image
+            .write_to(&mut buffer, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode PNG: {e}"))?;
 
-    #[cfg(target_os = "windows")]
-    let curl_bin = "curl.exe";
-    #[cfg(not(target_os = "windows"))]
-    let curl_bin = "curl";
-
-    let mut cmd = Command::new(curl_bin);
-    cmd.args([
-        "-s",
-        "--max-time",
-        "12",
-        "-o",
-        if cfg!(target_os = "windows") {
-            "NUL"
-        } else {
-            "/dev/null"
-        },
-        "-w",
-        "%{redirect_url}",
-        "-A",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "-F",
-        &form_arg,
-        "https://lens.google.com/v3/upload",
-    ]);
-
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(CREATE_NO_WINDOW);
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to execute curl for Google Lens upload: {e}"))?;
-
-    let redirect_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-    let target_url = if redirect_url.starts_with("http") {
-        println!("✅ [DeskLens] Google Lens results URL generated: {redirect_url}");
-        redirect_url
-    } else {
-        println!("⚠️ [DeskLens] Fallback to Google Lens home.");
-        let _ = copy_file_to_os_clipboard(&temp_path);
-        "https://lens.google.com/".to_string()
+        let encoded = base64::engine::general_purpose::STANDARD.encode(buffer.into_inner());
+        (encoded, image.width(), image.height())
     };
 
-    open_external_url(&target_url)?;
-    Ok(target_url)
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(1729000000000);
+
+    let html_body = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DeskLens — Uploading to Google Lens...</title>
+  <style>
+    body {{
+      background: #121215;
+      color: #f4f4f5;
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }}
+    .card {{
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 12px;
+      padding: 24px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }}
+    img {{
+      max-width: 280px;
+      max-height: 200px;
+      border-radius: 8px;
+      border: 1px solid rgba(59, 130, 246, 0.5);
+      object-fit: contain;
+    }}
+    .spinner {{
+      color: #60a5fa;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }}
+    .meta {{
+      color: #a1a1aa;
+      font-size: 0.8rem;
+      font-family: monospace;
+    }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="data:image/png;base64,{b64_png}" alt="Cropped region" />
+    <div class="spinner">🔍 Uploading cropped region to Google Lens...</div>
+    <div class="meta">{width} × {height} px</div>
+  </div>
+  <form id="lens-form" action="https://lens.google.com/v3/upload?ep=ccm&s=csp&st={timestamp_ms}" method="POST" enctype="multipart/form-data" style="display:none;">
+    <input id="file-input" type="file" name="encoded_image" />
+  </form>
+  <script>
+    (function() {{
+      const b64 = "{b64_png}";
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {{
+        bytes[i] = bin.charCodeAt(i);
+      }}
+      const file = new File([bytes], "crop.png", {{ type: "image/png" }});
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.getElementById("file-input").files = dt.files;
+      document.getElementById("lens-form").submit();
+    }})();
+  </script>
+</body>
+</html>"#
+    );
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Failed to bind local Lens bridge server: {e}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to read local port: {e}"))?
+        .port();
+
+    let local_url = format!("http://127.0.0.1:{port}/lens");
+    println!("🌐 [DeskLens] Launching browser via local Lens bridge: {local_url}");
+
+    std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let _ = listener.set_nonblocking(false);
+        let start = std::time::Instant::now();
+
+        for stream in listener.incoming().flatten() {
+            if start.elapsed().as_secs() > 15 {
+                break;
+            }
+            let mut stream = stream;
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            let mut req_buf = [0u8; 2048];
+            let n = stream.read(&mut req_buf).unwrap_or(0);
+            if n == 0 {
+                continue;
+            }
+            let req_str = String::from_utf8_lossy(&req_buf[..n]);
+            if req_str.starts_with("GET /favicon") {
+                let resp = "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n";
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.flush();
+                continue;
+            }
+            if req_str.starts_with("GET ") {
+                let body_bytes = html_body.as_bytes();
+                let header = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body_bytes.len()
+                );
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(body_bytes);
+                let _ = stream.flush();
+                break;
+            }
+        }
+    });
+
+    open_external_url(&local_url)?;
+    Ok(local_url)
 }
 
 /// Copies the cropped image to the system clipboard and opens the chosen visual search provider in the default browser.
