@@ -24,8 +24,8 @@
       {
         "label": "results",
         "title": "DeskLens — Visual Search",
-        "width": 370,
-        "height": 470,
+        "width": 400,
+        "height": 500,
         "center": false,
         "visible": false,
         "skipTaskbar": false,

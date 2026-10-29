@@ -225,7 +225,7 @@ async fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<Str
 /// Must be called from an async command so WebView2 creation never blocks the main UI thread.
 fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(win) = app_handle.get_webview_window("results") {
-        let _ = win.set_size(tauri::LogicalSize::new(370.0, 470.0));
+        let _ = win.set_size(tauri::LogicalSize::new(400.0, 500.0));
         return Ok(win);
     }
 
@@ -235,7 +235,7 @@ fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::Webview
         WebviewUrl::App("results.html".into()),
     )
     .title("DeskLens — Visual Search")
-    .inner_size(370.0, 470.0)
+    .inner_size(400.0, 500.0)
     .always_on_top(true)
     .decorations(true)
     .visible(true)
@@ -268,16 +268,19 @@ async fn open_visual_search(
         }
     }
 
-    // 3. Ensure Results side-panel exists, show it, and broadcast payload
+    // 3. Ensure Results side-panel exists, unminimize if minimized, bring to front, and broadcast payload
     let results_win = ensure_results_window(&app_handle)?;
+    let _ = results_win.unminimize();
     let _ = results_win.show();
+    let _ = results_win.set_always_on_top(false);
+    let _ = results_win.set_always_on_top(true);
     let _ = results_win.set_focus();
 
     if let Some(payload) = payload_to_send {
         let _ = app_handle.emit("load-search-payload", &payload);
     }
 
-    println!("🔍 [DeskLens] Visual Search side-panel opened successfully.");
+    println!("🔍 [DeskLens] Visual Search side-panel opened and focused.");
     Ok(())
 }
 
@@ -575,6 +578,11 @@ pub fn run() {
                             );
 
                             if let Some(window) = app_handle.get_webview_window("main") {
+                                // Hide results panel before capturing so it doesn't obstruct the screen
+                                if let Some(results_win) = app_handle.get_webview_window("results") {
+                                    let _ = results_win.hide();
+                                }
+
                                 // 1. Capture clean screen before opening overlay
                                 match capture_screen_raw() {
                                     Ok(raw_image) => {
