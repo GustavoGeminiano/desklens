@@ -229,7 +229,7 @@ async fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<Str
 /// Must be called from an async command so WebView2 creation never blocks the main UI thread.
 fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(win) = app_handle.get_webview_window("results") {
-        let _ = win.set_size(tauri::LogicalSize::new(400.0, 600.0));
+        let _ = win.set_size(tauri::LogicalSize::new(430.0, 720.0));
         return Ok(win);
     }
 
@@ -239,7 +239,8 @@ fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::Webview
         WebviewUrl::App("results.html".into()),
     )
     .title("DeskLens — Visual Search")
-    .inner_size(400.0, 600.0)
+    .inner_size(430.0, 720.0)
+    .min_inner_size(380.0, 520.0)
     .always_on_top(true)
     .decorations(true)
     .visible(true)
