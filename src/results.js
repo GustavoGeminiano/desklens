@@ -10,7 +10,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   const openLensBtn = document.getElementById("open-lens-btn");
   const providerGoogleLens = document.getElementById("provider-google-lens");
   const providerGoogleImages = document.getElementById("provider-google-images");
-  const providerBingVisual = document.getElementById("provider-bing-visual");
   const toast = document.getElementById("toast");
 
   let currentDataUrl = null;
@@ -156,7 +155,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     providerGoogleLens.addEventListener("click", launchGoogleLens);
   }
 
-  // 6. Open Google Images or Bing Visual Search in integrated WebView (auto-copies image to clipboard)
+  // 6. Open Google Images in default browser (auto-copies image to clipboard)
   if (providerGoogleImages) {
     providerGoogleImages.addEventListener("click", async () => {
       await refreshCropFromBackend();
@@ -168,22 +167,6 @@ window.addEventListener("DOMContentLoaded", async () => {
           });
         } catch (err) {
           console.error("Failed to open Google Images:", err);
-        }
-      }
-    });
-  }
-
-  if (providerBingVisual) {
-    providerBingVisual.addEventListener("click", async () => {
-      await refreshCropFromBackend();
-      if (window.__TAURI__?.core?.invoke) {
-        try {
-          showToast("📋 Image copied! Press Ctrl+V in Bing Visual Search", 4500);
-          await window.__TAURI__.core.invoke("open_search_provider", {
-            provider: "bing-visual",
-          });
-        } catch (err) {
-          console.error("Failed to open Bing Visual Search:", err);
         }
       }
     });

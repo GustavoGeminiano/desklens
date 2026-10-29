@@ -70,6 +70,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     maskCutout.setAttribute("height", h);
 
     cropDimensions.textContent = `${Math.round(w)} × ${Math.round(h)} px`;
+    if (y < 32) {
+      cropDimensions.style.top = "6px";
+      cropDimensions.style.left = "6px";
+    } else {
+      cropDimensions.style.top = "-28px";
+      cropDimensions.style.left = "0px";
+    }
   }
 
   // Clear current active selection
@@ -114,17 +121,35 @@ window.addEventListener("DOMContentLoaded", async () => {
     return null;
   }
 
-  // Position floating action toolbar near the selection
+  // Position floating action toolbar near the selection, clamped within screen bounds
   function positionActionToolbar() {
-    const spaceBelow = window.innerHeight - (currentRect.y + currentRect.h);
-    if (spaceBelow < 65) {
-      cropActions.style.bottom = "auto";
-      cropActions.style.top = "-52px";
-    } else {
-      cropActions.style.top = "auto";
-      cropActions.style.bottom = "-52px";
-    }
     cropActions.classList.remove("hidden");
+
+    const margin = 12;
+    const toolbarW = cropActions.offsetWidth || 330;
+    const toolbarH = cropActions.offsetHeight || 46;
+
+    // 1. Horizontal clamping so buttons never get cut off at left or right screen edges
+    const idealScreenX = currentRect.x + (currentRect.w - toolbarW) / 2;
+    const minScreenX = margin;
+    const maxScreenX = Math.max(margin, window.innerWidth - toolbarW - margin);
+    const clampedScreenX = Math.min(Math.max(idealScreenX, minScreenX), maxScreenX);
+    cropActions.style.left = `${Math.round(clampedScreenX - currentRect.x)}px`;
+
+    // 2. Vertical clamping (prefer below cropBox, flip above if near bottom, or inside if full-height)
+    const spaceBelow = window.innerHeight - (currentRect.y + currentRect.h);
+    const spaceAbove = currentRect.y;
+
+    if (spaceBelow >= toolbarH + margin + 8) {
+      cropActions.style.top = `${Math.round(currentRect.h + 10)}px`;
+      cropActions.style.bottom = "auto";
+    } else if (spaceAbove >= toolbarH + margin + 8) {
+      cropActions.style.top = `${Math.round(-toolbarH - 10)}px`;
+      cropActions.style.bottom = "auto";
+    } else {
+      cropActions.style.top = `${Math.max(8, Math.round(currentRect.h - toolbarH - 10))}px`;
+      cropActions.style.bottom = "auto";
+    }
   }
 
   // =========================================================================
