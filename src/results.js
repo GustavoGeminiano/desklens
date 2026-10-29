@@ -65,33 +65,119 @@ window.addEventListener("DOMContentLoaded", async () => {
     const scaleX = displayedW / naturalW;
     const scaleY = displayedH / naturalH;
 
-    for (const line of result.lines) {
+    const flatWords = [];
+    let globalWordIdx = 0;
+
+    for (let lineIdx = 0; lineIdx < result.lines.length; lineIdx++) {
+      const line = result.lines[lineIdx];
       if (!line.words) continue;
+
       for (const word of line.words) {
         if (!word.text || !word.width || !word.height) continue;
         const pill = document.createElement("div");
         pill.className = "ocr-word-pill";
+        pill.dataset.index = globalWordIdx;
+        pill.dataset.line = lineIdx;
         pill.style.left = `${Math.round(word.x * scaleX)}px`;
         pill.style.top = `${Math.round(word.y * scaleY)}px`;
         pill.style.width = `${Math.round(word.width * scaleX)}px`;
         pill.style.height = `${Math.round(word.height * scaleY)}px`;
-        pill.title = `Click to copy: "${word.text}"`;
+        pill.title = `Drag to select phrase • Double-click for line • Click for word: "${word.text}"`;
 
-        pill.addEventListener("click", async (e) => {
+        const wordObj = {
+          index: globalWordIdx,
+          lineIndex: lineIdx,
+          text: word.text,
+          pill,
+        };
+        flatWords.push(wordObj);
+
+        // 1. Drag across words to select a phrase
+        pill.addEventListener("mousedown", (e) => {
           e.stopPropagation();
-          try {
-            await navigator.clipboard.writeText(word.text);
-            pill.classList.add("copied");
-            showToast(`📋 Copied: "${word.text}"`);
-            setTimeout(() => {
-              pill.classList.remove("copied");
-            }, 600);
-          } catch (err) {
-            console.error("Failed to copy word:", err);
+          const startIdx = parseInt(pill.dataset.index, 10);
+          let currentEndIdx = startIdx;
+
+          flatWords.forEach((w) => w.pill.classList.remove("selected"));
+          pill.classList.add("selected");
+
+          const onMove = (moveEvt) => {
+            const targetEl = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
+            if (targetEl && targetEl.classList.contains("ocr-word-pill")) {
+              const hoverIdx = parseInt(targetEl.dataset.index, 10);
+              if (!isNaN(hoverIdx) && hoverIdx !== currentEndIdx) {
+                currentEndIdx = hoverIdx;
+                const minI = Math.min(startIdx, currentEndIdx);
+                const maxI = Math.max(startIdx, currentEndIdx);
+
+                flatWords.forEach((w) => {
+                  if (w.index >= minI && w.index <= maxI) {
+                    w.pill.classList.add("selected");
+                  } else {
+                    w.pill.classList.remove("selected");
+                  }
+                });
+              }
+            }
+          };
+
+          const onUp = async () => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+
+            const minI = Math.min(startIdx, currentEndIdx);
+            const maxI = Math.max(startIdx, currentEndIdx);
+            const selectedSlice = flatWords.slice(minI, maxI + 1);
+            const phrase = selectedSlice.map((w) => w.text).join(" ").trim();
+
+            if (phrase) {
+              try {
+                await navigator.clipboard.writeText(phrase);
+                selectedSlice.forEach((w) => {
+                  w.pill.classList.remove("selected");
+                  w.pill.classList.add("copied");
+                  setTimeout(() => w.pill.classList.remove("copied"), 800);
+                });
+
+                if (selectedSlice.length > 1) {
+                  const snippet = phrase.length > 30 ? phrase.slice(0, 30) + "..." : phrase;
+                  showToast(`📋 Copied phrase: "${snippet}"`);
+                } else {
+                  showToast(`📋 Copied: "${phrase}"`);
+                }
+              } catch (err) {
+                console.error("Failed to copy selected text:", err);
+              }
+            }
+          };
+
+          window.addEventListener("mousemove", onMove);
+          window.addEventListener("mouseup", onUp);
+        });
+
+        // 2. Double-click copies the whole line/sentence
+        pill.addEventListener("dblclick", async (e) => {
+          e.stopPropagation();
+          const thisLineIdx = parseInt(pill.dataset.line, 10);
+          const lineWords = flatWords.filter((w) => w.lineIndex === thisLineIdx);
+          const lineSentence = lineWords.map((w) => w.text).join(" ").trim();
+
+          if (lineSentence) {
+            try {
+              await navigator.clipboard.writeText(lineSentence);
+              lineWords.forEach((w) => {
+                w.pill.classList.add("copied");
+                setTimeout(() => w.pill.classList.remove("copied"), 900);
+              });
+              showToast(`📋 Copied full line: "${lineSentence.slice(0, 35)}..."`);
+            } catch (err) {
+              console.error("Failed to copy line:", err);
+            }
           }
         });
 
         ocrHighlightOverlay.appendChild(pill);
+        globalWordIdx++;
       }
     }
   }
