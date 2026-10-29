@@ -68,18 +68,68 @@ fn write_crop_to_temp_file(state: &tauri::State<'_, AppState>) -> Result<PathBuf
     Ok(temp_path)
 }
 
+/// Opens an external HTTP/HTTPS URL in the user's default system browser without blocking.
+fn open_external_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = Command::new("rundll32.exe");
+        cmd.args(["url.dll,FileProtocolHandler", url]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.spawn()
+            .map_err(|e| format!("Failed to launch default browser on Windows: {e}"))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("Failed to launch default browser on Linux: {e}"))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| format!("Failed to launch default browser on macOS: {e}"))?;
+    }
+
+    Ok(())
+}
+
+/// Copies a PNG file from disk into the native OS clipboard.
+fn copy_file_to_os_clipboard(temp_path: &PathBuf) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()",
+            temp_path.to_string_lossy().replace('\'', "''")
+        );
+
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &ps_script]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.output()
+            .map_err(|e| format!("Failed to copy image to Windows clipboard: {e}"))?;
+    }
+
+    Ok(())
+}
+
 /// Closes the fullscreen overlay and hides the main window back to the background.
 #[tauri::command]
-fn hide_overlay(app_handle: tauri::AppHandle) {
+async fn hide_overlay(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
         let _ = window.set_fullscreen(false);
         let _ = window.hide();
     }
+    Ok(())
 }
 
 /// Allows the frontend to manually trigger a fresh screenshot.
 #[tauri::command]
-fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String> {
+async fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String> {
     let raw_image = capture_screen_raw()?;
     let data_url = encode_png_data_url(&raw_image)?;
 
@@ -94,7 +144,7 @@ fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String> {
 
 /// Crops a user-selected rectangle from the current screenshot and stores it in memory.
 #[tauri::command]
-fn crop_selection(
+async fn crop_selection(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     x: u32,
@@ -104,44 +154,46 @@ fn crop_selection(
     screen_width: u32,
     screen_height: u32,
 ) -> Result<String, String> {
-    let guard = state
-        .current_screenshot
-        .lock()
-        .map_err(|e| format!("Failed to lock screenshot state: {e}"))?;
+    let cropped = {
+        let guard = state
+            .current_screenshot
+            .lock()
+            .map_err(|e| format!("Failed to lock screenshot state: {e}"))?;
 
-    let image = guard
-        .as_ref()
-        .ok_or_else(|| "No active screenshot stored for cropping".to_string())?;
+        let image = guard
+            .as_ref()
+            .ok_or_else(|| "No active screenshot stored for cropping".to_string())?;
 
-    let img_w = image.width();
-    let img_h = image.height();
+        let img_w = image.width();
+        let img_h = image.height();
 
-    // Scale calculation to handle Windows/Linux Display Scaling (e.g. 125%, 150%, 200%)
-    let scale_x = if screen_width > 0 {
-        img_w as f64 / screen_width as f64
-    } else {
-        1.0
+        // Scale calculation to handle Windows/Linux Display Scaling (e.g. 125%, 150%, 200%)
+        let scale_x = if screen_width > 0 {
+            img_w as f64 / screen_width as f64
+        } else {
+            1.0
+        };
+        let scale_y = if screen_height > 0 {
+            img_h as f64 / screen_height as f64
+        } else {
+            1.0
+        };
+
+        let real_x = ((x as f64) * scale_x).round() as u32;
+        let real_y = ((y as f64) * scale_y).round() as u32;
+        let real_w = ((width as f64) * scale_x).round() as u32;
+        let real_h = ((height as f64) * scale_y).round() as u32;
+
+        if real_x >= img_w || real_y >= img_h || real_w == 0 || real_h == 0 {
+            return Err("Invalid selection dimensions".to_string());
+        }
+
+        let clamped_w = real_w.min(img_w - real_x);
+        let clamped_h = real_h.min(img_h - real_y);
+
+        println!("✂️ [DeskLens] Successfully cropped region: {clamped_w}x{clamped_h} px");
+        image::imageops::crop_imm(image, real_x, real_y, clamped_w, clamped_h).to_image()
     };
-    let scale_y = if screen_height > 0 {
-        img_h as f64 / screen_height as f64
-    } else {
-        1.0
-    };
-
-    let real_x = ((x as f64) * scale_x).round() as u32;
-    let real_y = ((y as f64) * scale_y).round() as u32;
-    let real_w = ((width as f64) * scale_x).round() as u32;
-    let real_h = ((height as f64) * scale_y).round() as u32;
-
-    if real_x >= img_w || real_y >= img_h || real_w == 0 || real_h == 0 {
-        return Err("Invalid selection dimensions".to_string());
-    }
-
-    let clamped_w = real_w.min(img_w - real_x);
-    let clamped_h = real_h.min(img_h - real_y);
-
-    let cropped = image::imageops::crop_imm(image, real_x, real_y, clamped_w, clamped_h).to_image();
-    println!("✂️ [DeskLens] Successfully cropped region: {clamped_w}x{clamped_h} px");
 
     let data_url = encode_png_data_url(&cropped)?;
 
@@ -161,7 +213,7 @@ fn crop_selection(
 
 /// Retrieves the latest cropped image data URL from state.
 #[tauri::command]
-fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
+async fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
     let guard = state
         .latest_crop
         .lock()
@@ -170,6 +222,7 @@ fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<String>, 
 }
 
 /// Helper to ensure the "results" side-panel window exists and is shown.
+/// Must be called from an async command so WebView2 creation never blocks the main UI thread.
 fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(win) = app_handle.get_webview_window("results") {
         return Ok(win);
@@ -189,44 +242,9 @@ fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::Webview
     .map_err(|e| format!("Failed to create results window: {e}"))
 }
 
-/// Helper to open or navigate the integrated WebView browser window ("lens-viewer").
-fn open_in_webview_window(
-    app_handle: &tauri::AppHandle,
-    url_str: &str,
-    title: &str,
-) -> Result<(), String> {
-    let parsed_url: tauri::Url = url_str
-        .parse()
-        .map_err(|e| format!("Invalid search URL: {e}"))?;
-
-    if let Some(viewer) = app_handle.get_webview_window("lens-viewer") {
-        let _ = viewer.set_title(title);
-        let _ = viewer.navigate(parsed_url);
-        let _ = viewer.show();
-        let _ = viewer.set_focus();
-    } else {
-        let viewer = WebviewWindowBuilder::new(
-            app_handle,
-            "lens-viewer",
-            WebviewUrl::External(parsed_url),
-        )
-        .title(title)
-        .inner_size(980.0, 800.0)
-        .center()
-        .decorations(true)
-        .visible(true)
-        .build()
-        .map_err(|e| format!("Failed to open integrated search viewer: {e}"))?;
-
-        let _ = viewer.set_focus();
-    }
-
-    Ok(())
-}
-
 /// SPRINT 3: Opens the integrated side-panel Visual Search window with the cropped image.
 #[tauri::command]
-fn open_visual_search(
+async fn open_visual_search(
     app_handle: tauri::AppHandle,
     crop_data_url: Option<String>,
 ) -> Result<(), String> {
@@ -262,12 +280,9 @@ fn open_visual_search(
     Ok(())
 }
 
-/// Uploads the cropped image directly to Google Lens and opens the results in the integrated WebView window.
+/// Uploads the cropped image directly to Google Lens on a background thread and opens the results in the default browser.
 #[tauri::command]
-fn search_google_lens(
-    app_handle: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
+async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let temp_path = write_crop_to_temp_file(&state)?;
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
@@ -286,6 +301,8 @@ fn search_google_lens(
     let mut cmd = Command::new(curl_bin);
     cmd.args([
         "-s",
+        "--max-time",
+        "12",
         "-o",
         if cfg!(target_os = "windows") {
             "NUL"
@@ -315,89 +332,75 @@ fn search_google_lens(
         redirect_url
     } else {
         println!("⚠️ [DeskLens] Fallback to Google Lens home.");
+        let _ = copy_file_to_os_clipboard(&temp_path);
         "https://lens.google.com/".to_string()
     };
 
-    open_in_webview_window(&app_handle, &target_url, "DeskLens — Google Lens Results")?;
+    open_external_url(&target_url)?;
     Ok(target_url)
 }
 
-/// Opens a visual search provider (Google Images, Bing Visual Search, etc.) inside the DeskLens WebView window
-/// after automatically copying the cropped image to the system clipboard.
+/// Copies the cropped image to the system clipboard and opens the chosen visual search provider in the default browser.
 #[tauri::command]
-fn open_search_provider(
-    app_handle: tauri::AppHandle,
+async fn open_search_provider(
     state: tauri::State<'_, AppState>,
     provider: String,
 ) -> Result<(), String> {
-    // Automatically copy the cropped image to the system clipboard so the user can paste (Ctrl+V) immediately
-    let _ = copy_crop_to_clipboard(state);
+    if let Ok(temp_path) = write_crop_to_temp_file(&state) {
+        let _ = copy_file_to_os_clipboard(&temp_path);
+    }
 
-    let (url, title) = match provider.as_str() {
-        "google-images" => ("https://images.google.com/", "DeskLens — Google Images"),
-        "bing-visual" => (
-            "https://www.bing.com/visualsearch",
-            "DeskLens — Bing Visual Search",
-        ),
-        _ => ("https://lens.google.com/", "DeskLens — Google Lens"),
+    let url = match provider.as_str() {
+        "google-images" => "https://images.google.com/",
+        "bing-visual" => "https://www.bing.com/visualsearch",
+        _ => "https://lens.google.com/",
     };
 
-    open_in_webview_window(&app_handle, url, title)
+    open_external_url(url)
 }
 
 /// Copies the cropped image directly to the native OS Clipboard.
 #[tauri::command]
-fn copy_crop_to_clipboard(state: tauri::State<'_, AppState>) -> Result<(), String> {
+async fn copy_crop_to_clipboard(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let temp_path = write_crop_to_temp_file(&state)?;
-
-    #[cfg(target_os = "windows")]
-    {
-        let ps_script = format!(
-            "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('{}'); [System.Windows.Forms.Clipboard]::SetImage($img); $img.Dispose()",
-            temp_path.to_string_lossy().replace('\'', "''")
-        );
-
-        let mut cmd = Command::new("powershell");
-        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &ps_script]);
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.output()
-            .map_err(|e| format!("Failed to copy image to Windows clipboard: {e}"))?;
-    }
-
+    copy_file_to_os_clipboard(&temp_path)?;
     println!("📋 [DeskLens] Cropped image copied to system clipboard.");
     Ok(())
 }
 
 /// Saves the cropped PNG image to the user's Pictures/DeskLens directory and highlights it in Explorer.
 #[tauri::command]
-fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let guard = state
-        .latest_crop_image
-        .lock()
-        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
+async fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let file_path = {
+        let guard = state
+            .latest_crop_image
+            .lock()
+            .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
 
-    let image = guard
-        .as_ref()
-        .ok_or_else(|| "No cropped image available to save".to_string())?;
+        let image = guard
+            .as_ref()
+            .ok_or_else(|| "No cropped image available to save".to_string())?;
 
-    let base_dir = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir());
+        let base_dir = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir());
 
-    let save_dir = base_dir.join("Pictures").join("DeskLens");
-    std::fs::create_dir_all(&save_dir)
-        .map_err(|e| format!("Failed to create Pictures/DeskLens folder: {e}"))?;
+        let save_dir = base_dir.join("Pictures").join("DeskLens");
+        std::fs::create_dir_all(&save_dir)
+            .map_err(|e| format!("Failed to create Pictures/DeskLens folder: {e}"))?;
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
 
-    let file_path = save_dir.join(format!("desklens-crop-{timestamp}.png"));
-    image
-        .save_with_format(&file_path, image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to write PNG file: {e}"))?;
+        let path = save_dir.join(format!("desklens-crop-{timestamp}.png"));
+        image
+            .save_with_format(&path, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to write PNG file: {e}"))?;
+        path
+    };
 
     let path_str = file_path.to_string_lossy().to_string();
     println!("💾 [DeskLens] Saved cropped PNG to: {path_str}");
@@ -414,10 +417,11 @@ fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, String
 
 /// Closes the visual search results window.
 #[tauri::command]
-fn close_results_window(app_handle: tauri::AppHandle) {
+async fn close_results_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(results_win) = app_handle.get_webview_window("results") {
         let _ = results_win.hide();
     }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
