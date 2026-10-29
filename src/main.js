@@ -13,6 +13,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const cropDimensions = document.getElementById("crop-dimensions");
   const cropActions = document.getElementById("crop-actions");
   const cropPreviewThumb = document.getElementById("crop-preview-thumb");
+  const cropTextHighlights = document.getElementById("crop-text-highlights");
 
   // Control Buttons
   const closeOverlayBtn = document.getElementById("close-overlay-btn");
@@ -90,6 +91,69 @@ window.addEventListener("DOMContentLoaded", async () => {
     cropActions.classList.add("hidden");
     maskCutout.setAttribute("width", 0);
     maskCutout.setAttribute("height", 0);
+
+    if (cropTextHighlights) {
+      cropTextHighlights.innerHTML = "";
+    }
+    if (ocrActionBtn) {
+      ocrActionBtn.innerHTML = "<span>📝</span> Copy Text";
+    }
+    if (searchActionBtn) {
+      searchActionBtn.innerHTML = "<span>🔍</span> Search Image";
+    }
+  }
+
+  // Render interactive word highlights directly over text in selection box (Sprint 4)
+  function renderTextHighlights(ocrResult, cropW, cropH) {
+    if (!cropTextHighlights || !ocrResult?.lines) return;
+    cropTextHighlights.innerHTML = "";
+
+    const tempImg = new Image();
+    tempImg.onload = () => {
+      const realW = tempImg.naturalWidth || cropW;
+      const realH = tempImg.naturalHeight || cropH;
+      const scaleX = currentRect.w / realW;
+      const scaleY = currentRect.h / realH;
+
+      for (const line of ocrResult.lines) {
+        if (!line.words) continue;
+        for (const word of line.words) {
+          if (!word.text || !word.width || !word.height) continue;
+          const pill = document.createElement("div");
+          pill.className = "crop-word-highlight";
+          pill.style.left = `${Math.round(word.x * scaleX)}px`;
+          pill.style.top = `${Math.round(word.y * scaleY)}px`;
+          pill.style.width = `${Math.round(word.width * scaleX)}px`;
+          pill.style.height = `${Math.round(word.height * scaleY)}px`;
+          pill.title = `Click to copy: "${word.text}"`;
+
+          pill.addEventListener("mousedown", (e) => e.stopPropagation());
+          pill.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            try {
+              await navigator.clipboard.writeText(word.text);
+              pill.classList.add("copied");
+              if (ocrActionBtn) {
+                ocrActionBtn.innerHTML = `<span>📋</span> Copied: "${word.text}"`;
+                setTimeout(() => {
+                  ocrActionBtn.innerHTML = "<span>📝</span> Copy Text";
+                }, 1600);
+              }
+              setTimeout(() => {
+                pill.classList.remove("copied");
+              }, 700);
+            } catch (err) {
+              console.error("Failed to copy word:", err);
+            }
+          });
+
+          cropTextHighlights.appendChild(pill);
+        }
+      }
+    };
+    if (currentCropDataUrl) {
+      tempImg.src = currentCropDataUrl;
+    }
   }
 
   // Request backend Rust to crop the selected frame slice
@@ -112,6 +176,14 @@ window.addEventListener("DOMContentLoaded", async () => {
           if (cropPreviewThumb) {
             cropPreviewThumb.src = croppedDataUrl;
           }
+
+          // Trigger OCR in background to highlight interactive words
+          window.__TAURI__.core.invoke("extract_text_from_crop")
+            .then((ocrRes) => {
+              renderTextHighlights(ocrRes, currentRect.w, currentRect.h);
+            })
+            .catch(() => {});
+
           return croppedDataUrl;
         }
       } catch (err) {
@@ -295,6 +367,7 @@ window.addEventListener("DOMContentLoaded", async () => {
             } catch (_) {}
             setTimeout(() => {
               hideOverlay();
+              ocrActionBtn.innerHTML = originalHtml;
             }, 600);
           } else {
             ocrActionBtn.innerHTML = "<span>⚠️</span> No text found";

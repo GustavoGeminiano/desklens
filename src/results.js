@@ -13,6 +13,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const ocrTextBox = document.getElementById("ocr-text-box");
   const ocrWordCount = document.getElementById("ocr-word-count");
   const copyOcrBtn = document.getElementById("copy-ocr-btn");
+  const ocrHighlightOverlay = document.getElementById("ocr-highlight-overlay");
   const toast = document.getElementById("toast");
 
   let currentDataUrl = null;
@@ -43,18 +44,66 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (cropStatus) {
         cropStatus.textContent = "Crop Ready";
       }
+      if (copyOcrBtn) {
+        copyOcrBtn.textContent = "📋 Copy";
+      }
+      triggerOcrDetection(img.naturalWidth, img.naturalHeight);
     };
     img.src = dataUrl;
+  }
 
-    // Automatically trigger native OCR on the new crop
-    triggerOcrDetection();
+  // Render clickable bounding-box word pills over the preview image (Google Lens style)
+  function renderOcrPills(result, naturalW, naturalH) {
+    if (!ocrHighlightOverlay) return;
+    ocrHighlightOverlay.innerHTML = "";
+    if (!result?.lines || !resultsThumb) return;
+
+    const displayedW = resultsThumb.clientWidth;
+    const displayedH = resultsThumb.clientHeight;
+    if (!displayedW || !displayedH || !naturalW || !naturalH) return;
+
+    const scaleX = displayedW / naturalW;
+    const scaleY = displayedH / naturalH;
+
+    for (const line of result.lines) {
+      if (!line.words) continue;
+      for (const word of line.words) {
+        if (!word.text || !word.width || !word.height) continue;
+        const pill = document.createElement("div");
+        pill.className = "ocr-word-pill";
+        pill.style.left = `${Math.round(word.x * scaleX)}px`;
+        pill.style.top = `${Math.round(word.y * scaleY)}px`;
+        pill.style.width = `${Math.round(word.width * scaleX)}px`;
+        pill.style.height = `${Math.round(word.height * scaleY)}px`;
+        pill.title = `Click to copy: "${word.text}"`;
+
+        pill.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            await navigator.clipboard.writeText(word.text);
+            pill.classList.add("copied");
+            showToast(`📋 Copied: "${word.text}"`);
+            setTimeout(() => {
+              pill.classList.remove("copied");
+            }, 600);
+          } catch (err) {
+            console.error("Failed to copy word:", err);
+          }
+        });
+
+        ocrHighlightOverlay.appendChild(pill);
+      }
+    }
   }
 
   // Trigger native OS OCR text recognition
-  async function triggerOcrDetection() {
+  async function triggerOcrDetection(naturalW, naturalH) {
     if (!window.__TAURI__?.core?.invoke) return;
     if (ocrTextBox) {
       ocrTextBox.value = "Detecting text with Windows OCR...";
+    }
+    if (ocrHighlightOverlay) {
+      ocrHighlightOverlay.innerHTML = "";
     }
     try {
       const result = await window.__TAURI__.core.invoke("extract_text_from_crop");
@@ -62,6 +111,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         latestExtractedText = result.full_text.trim();
         if (ocrTextBox) ocrTextBox.value = latestExtractedText;
         if (ocrWordCount) ocrWordCount.textContent = `${result.word_count} word${result.word_count === 1 ? "" : "s"}`;
+        renderOcrPills(result, naturalW, naturalH);
       } else {
         latestExtractedText = "";
         if (ocrTextBox) ocrTextBox.value = "No text detected in this image.";
@@ -97,6 +147,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       try {
         await navigator.clipboard.writeText(latestExtractedText);
         showToast("✅ Text copied to clipboard!");
+        copyOcrBtn.textContent = "✅ Copied!";
+        setTimeout(() => {
+          copyOcrBtn.textContent = "📋 Copy";
+        }, 1500);
       } catch (err) {
         console.error("Clipboard copy failed:", err);
       }
