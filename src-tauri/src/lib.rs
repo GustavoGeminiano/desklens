@@ -286,73 +286,47 @@ async fn open_visual_search(
     Ok(())
 }
 
-/// Uploads the cropped image directly to Google Lens and opens the resulting visual matches in the default browser.
-#[tauri::command]
-async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let (temp_path, width, height) = {
-        let guard = state
-            .latest_crop_image
-            .lock()
-            .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
+/// Simple URL-encoder for query parameter values (RFC 3986).
+fn url_encode(input: &str) -> String {
+    let mut encoded = String::with_capacity(input.len() * 3);
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
+}
 
-        let image = guard
-            .as_ref()
-            .ok_or_else(|| "No cropped image available".to_string())?;
-
-        let temp_path = std::env::temp_dir().join("desklens_latest_crop.png");
-        image
-            .save_with_format(&temp_path, image::ImageFormat::Png)
-            .map_err(|e| format!("Failed to save temporary crop PNG: {e}"))?;
-
-        (temp_path, image.width(), image.height())
-    };
-
-    let _ = copy_file_to_os_clipboard(&temp_path);
+/// Uploads the cropped image to a reliable public CDN so Google Lens can fetch it via `uploadbyurl`
+/// within the user's own browser session (preventing 403 and broken image sessions).
+fn upload_to_freeimage(temp_path: &PathBuf) -> Result<String, String> {
     let temp_path_str = temp_path.to_string_lossy().to_string();
-
-    let timestamp_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(1729000000000);
-
-    let upload_url = format!(
-        "https://lens.google.com/v3/upload?ep=gsbubb&st={timestamp_ms}&hl=pt-BR&vpw=1280&vph=720"
-    );
-
-    let form_file = format!("encoded_image=@{temp_path_str};type=image/png;filename=crop.png");
-    let form_dims = format!("processed_image_dimensions={width},{height}");
-
-    println!("🌐 [DeskLens] Uploading cropped slice to Google Lens...");
 
     #[cfg(target_os = "windows")]
     let curl_bin = "curl.exe";
     #[cfg(not(target_os = "windows"))]
     let curl_bin = "curl";
 
+    let file_arg = format!("source=@{}", temp_path_str);
     let mut cmd = Command::new(curl_bin);
     cmd.args([
         "-s",
         "--max-time",
         "12",
-        "-o",
-        if cfg!(target_os = "windows") {
-            "NUL"
-        } else {
-            "/dev/null"
-        },
-        "-w",
-        "%{redirect_url}",
-        "-H",
-        "Origin: https://www.google.com",
-        "-H",
-        "Referer: https://www.google.com/",
-        "-A",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "-F",
-        &form_file,
+        "key=6d207e02198a847aa98d0a2a901485a5",
         "-F",
-        &form_dims,
-        &upload_url,
+        "action=upload",
+        "-F",
+        &file_arg,
+        "-F",
+        "format=json",
+        "https://freeimage.host/api/1/upload",
     ]);
 
     #[cfg(target_os = "windows")]
@@ -360,23 +334,49 @@ async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String,
 
     let output = cmd
         .output()
-        .map_err(|e| format!("Failed to execute Google Lens upload: {e}"))?;
+        .map_err(|e| format!("Failed to run upload command: {e}"))?;
 
-    let redirect_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-    if redirect_url.starts_with("http") {
-        println!(
-            "✅ [DeskLens] Google Lens results URL generated (len {}): {}",
-            redirect_url.len(),
-            &redirect_url[..redirect_url.len().min(80)]
-        );
-        open_external_url(&redirect_url)?;
-        Ok(redirect_url)
-    } else {
-        println!("⚠️ [DeskLens] Fallback to Google Lens web");
-        let fallback = "https://lens.google.com/";
-        open_external_url(fallback)?;
-        Ok(fallback.to_string())
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if let Some(url) = json["image"]["url"].as_str() {
+            return Ok(url.to_string());
+        }
+        if let Some(url) = json["image"]["display_url"].as_str() {
+            return Ok(url.to_string());
+        }
+    }
+
+    Err(format!(
+        "Upload failed: {}",
+        stdout.chars().take(80).collect::<String>()
+    ))
+}
+
+/// Uploads the cropped image to a public CDN and opens `https://lens.google.com/uploadbyurl?url=...`
+/// in the user's browser, allowing Google Lens to fetch and process the image natively.
+#[tauri::command]
+async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let temp_path = write_crop_to_temp_file(&state)?;
+    let _ = copy_file_to_os_clipboard(&temp_path);
+
+    println!("🌐 [DeskLens] Preparing cropped slice for Google Lens...");
+
+    match upload_to_freeimage(&temp_path) {
+        Ok(direct_img_url) => {
+            println!("✅ [DeskLens] Hosted image URL: {direct_img_url}");
+            let encoded = url_encode(&direct_img_url);
+            let lens_url = format!("https://lens.google.com/uploadbyurl?url={encoded}");
+            println!("🔍 [DeskLens] Launching Google Lens: {lens_url}");
+            open_external_url(&lens_url)?;
+            Ok(lens_url)
+        }
+        Err(err) => {
+            eprintln!("⚠️ [DeskLens] Hosting failed ({err}). Opening Google Images with clipboard fallback...");
+            let fallback_url = "https://images.google.com/";
+            open_external_url(fallback_url)?;
+            Ok(fallback_url.to_string())
+        }
     }
 }
 
