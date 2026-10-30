@@ -73,6 +73,31 @@
 * [Node.js](https://nodejs.org/) (v18+)
 * [Rust](https://www.rust-lang.org/tools/install) (v1.78+)
 * **Windows:** Visual Studio 2022 C++ Build Tools (with *"Desktop development with C++"* workload)
+* **Linux (Ubuntu / Debian):**
+  ```bash
+  sudo apt update
+  sudo apt install -y \
+    build-essential \
+    curl \
+    wget \
+    file \
+    pkg-config \
+    libssl-dev \
+    libgtk-3-dev \
+    libwebkit2gtk-4.1-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    libxdo-dev \
+    libpipewire-0.3-dev \
+    libspa-0.2-dev \
+    tesseract-ocr \
+    tesseract-ocr-por \
+    tesseract-ocr-eng \
+    wl-clipboard \
+    xclip
+  ```
+
+  > **Note for Wayland Users:** On Wayland desktop environments (such as Ubuntu GNOME), global keyboard shortcut capture (`Ctrl+Shift+X`) requires Xwayland compatibility. Launch the application using `./run-linux.sh` (which configures `GDK_BACKEND=x11` and `WEBKIT_DISABLE_COMPOSITING_MODE=1`) or configure a custom system shortcut in **GNOME Settings → Keyboard → Keyboard Shortcuts**.
 
 ### Installation & Run
 
@@ -88,9 +113,14 @@ npm install
 ```
 
 3. Run in development mode:
-```bash
-npm run tauri dev
-```
+- **On Linux (Recommended):**
+  ```bash
+  ./run-linux.sh
+  ```
+- **Standard / Windows:**
+  ```bash
+  npm run tauri dev
+  ```
 
 4. **Testing the application:**
    * The app will start silently in your system tray (near the clock).

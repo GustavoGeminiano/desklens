@@ -12,6 +12,8 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub mod ocr;
+pub mod translation;
+use translation::translate_on_screen;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -26,14 +28,69 @@ pub struct AppState {
     pub latest_crop: Mutex<Option<String>>,
 }
 
+/// Linux display server and desktop session detection helper.
+#[derive(Debug, Clone)]
+pub struct LinuxDisplayInfo {
+    pub session_type: String,
+    pub wayland_display: Option<String>,
+    pub x11_display: Option<String>,
+    pub gdk_backend: Option<String>,
+    pub desktop: Option<String>,
+}
+
+impl LinuxDisplayInfo {
+    pub fn detect() -> Self {
+        #[cfg(target_os = "linux")]
+        {
+            Self {
+                session_type: std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".to_string()),
+                wayland_display: std::env::var("WAYLAND_DISPLAY").ok(),
+                x11_display: std::env::var("DISPLAY").ok(),
+                gdk_backend: std::env::var("GDK_BACKEND").ok(),
+                desktop: std::env::var("XDG_CURRENT_DESKTOP").ok(),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Self {
+                session_type: "native".to_string(),
+                wayland_display: None,
+                x11_display: None,
+                gdk_backend: None,
+                desktop: None,
+            }
+        }
+    }
+
+    pub fn is_wayland(&self) -> bool {
+        self.session_type.eq_ignore_ascii_case("wayland") || self.wayland_display.is_some()
+    }
+
+    pub fn log_startup(&self) {
+        #[cfg(target_os = "linux")]
+        {
+            println!("🖥️ [DeskLens] Display Server Environment Detected:");
+            println!("   • XDG_SESSION_TYPE:    {}", self.session_type);
+            println!("   • WAYLAND_DISPLAY:     {}", self.wayland_display.as_deref().unwrap_or("<unset>"));
+            println!("   • DISPLAY (X11):       {}", self.x11_display.as_deref().unwrap_or("<unset>"));
+            println!("   • GDK_BACKEND:         {}", self.gdk_backend.as_deref().unwrap_or("<auto>"));
+            println!("   • XDG_CURRENT_DESKTOP: {}", self.desktop.as_deref().unwrap_or("<unknown>"));
+        }
+    }
+}
+
 /// Captures the primary display screen using xcap and returns the raw RgbaImage.
+/// Gracefully handles multi-monitor enumeration and falls back to the first available monitor.
 fn capture_screen_raw() -> Result<RgbaImage, String> {
     let monitors = xcap::Monitor::all().map_err(|e| format!("Failed to list monitors: {e}"))?;
+    if monitors.is_empty() {
+        return Err("No active monitor found on system".to_string());
+    }
+
     let monitor = monitors
-        .into_iter()
+        .iter()
         .find(|m| m.is_primary().unwrap_or(false))
-        .or_else(|| xcap::Monitor::all().ok()?.into_iter().next())
-        .ok_or_else(|| "No active monitor found".to_string())?;
+        .unwrap_or(&monitors[0]);
 
     monitor
         .capture_image()
@@ -85,10 +142,61 @@ fn open_external_url(url: &str) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        Command::new("xdg-open")
-            .arg(url)
-            .spawn()
-            .map_err(|e| format!("Failed to launch default browser on Linux: {e}"))?;
+        // Use GdkX11 + Gio.AppInfo with the live X11 server timestamp so GNOME/Mutter
+        // registers a valid startup sequence (_TIME<server_time>) and immediately raises
+        // and focuses the browser window instead of opening the tab silently in the background.
+        let py_script = r#"
+import os, sys, time
+try:
+    import gi
+    gi.require_version('Gtk', '3.0')
+    gi.require_version('Gdk', '3.0')
+    gi.require_version('GdkX11', '3.0')
+    from gi.repository import Gtk, Gdk, GdkX11, Gio
+    url = sys.argv[1]
+    w = Gtk.Window()
+    w.realize()
+    server_time = GdkX11.x11_get_server_time(w.get_window())
+    display = Gdk.Display.get_default()
+    ctx = display.get_app_launch_context()
+    ctx.set_timestamp(server_time)
+    for k in ('GDK_BACKEND', 'WEBKIT_DISABLE_COMPOSITING_MODE', 'NO_AT_BRIDGE'):
+        os.environ.pop(k, None)
+        ctx.unsetenv(k)
+    app = Gio.AppInfo.get_default_for_uri_scheme('https')
+    if app:
+        startup_id = ctx.get_startup_notify_id(app, [])
+        display.sync()
+        if startup_id:
+            os.environ['DESKTOP_STARTUP_ID'] = startup_id
+            os.environ['XDG_ACTIVATION_TOKEN'] = startup_id
+        if app.launch_uris([url], None):
+            display.sync()
+            time.sleep(0.15)
+            sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+"#;
+
+        let url_owned = url.to_string();
+        std::thread::spawn(move || {
+            let py_ok = Command::new("python3")
+                .args(["-c", py_script, &url_owned])
+                .env("GDK_BACKEND", "x11")
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+
+            if !py_ok {
+                let _ = Command::new("xdg-open")
+                    .arg(&url_owned)
+                    .env_remove("GDK_BACKEND")
+                    .env_remove("WEBKIT_DISABLE_COMPOSITING_MODE")
+                    .env_remove("NO_AT_BRIDGE")
+                    .spawn();
+            }
+        });
     }
 
     #[cfg(target_os = "macos")]
@@ -116,8 +224,59 @@ fn copy_file_to_os_clipboard(temp_path: &PathBuf) -> Result<(), String> {
         cmd.creation_flags(CREATE_NO_WINDOW);
         cmd.output()
             .map_err(|e| format!("Failed to copy image to Windows clipboard: {e}"))?;
+        return Ok(());
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        let path_str = temp_path.to_string_lossy().to_string();
+
+        // 1. Try Wayland wl-copy
+        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            if let Ok(file) = std::fs::File::open(temp_path) {
+                if let Ok(mut child) = Command::new("wl-copy")
+                    .args(["-t", "image/png"])
+                    .stdin(file)
+                    .spawn()
+                {
+                    if let Ok(status) = child.wait() {
+                        if status.success() {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Try X11 xclip
+        if let Ok(child) = Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "image/png", "-i", &path_str])
+            .output()
+        {
+            if child.status.success() {
+                return Ok(());
+            }
+        }
+
+        // 3. Try arboard cross-platform clipboard
+        if let Ok(img) = image::open(temp_path) {
+            let rgba = img.to_rgba8();
+            if let Ok(mut cb) = arboard::Clipboard::new() {
+                let img_data = arboard::ImageData {
+                    width: rgba.width() as usize,
+                    height: rgba.height() as usize,
+                    bytes: std::borrow::Cow::Borrowed(rgba.as_raw()),
+                };
+                if cb.set_image(img_data).is_ok() {
+                    return Ok(());
+                }
+            }
+        }
+
+        return Err("Failed to copy image to clipboard: install wl-clipboard (for Wayland) or xclip (for X11)".to_string());
+    }
+
+    #[allow(unreachable_code)]
     Ok(())
 }
 
@@ -125,6 +284,7 @@ fn copy_file_to_os_clipboard(temp_path: &PathBuf) -> Result<(), String> {
 #[tauri::command]
 async fn hide_overlay(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.set_always_on_top(false);
         let _ = window.set_fullscreen(false);
         let _ = window.hide();
     }
@@ -244,6 +404,7 @@ fn ensure_results_window(app_handle: &tauri::AppHandle) -> Result<tauri::Webview
     .always_on_top(true)
     .decorations(true)
     .visible(true)
+    .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
     .build()
     .map_err(|e| format!("Failed to create results window: {e}"))
 }
@@ -305,8 +466,96 @@ fn url_encode(input: &str) -> String {
     encoded
 }
 
-/// Uploads the cropped image to a reliable public CDN so Google Lens can fetch it via `uploadbyurl`
-/// within the user's own browser session (preventing 403 and broken image sessions).
+/// Uploads the cropped image to uguu.se (~500ms, serves direct image/png).
+fn upload_to_uguu(temp_path: &PathBuf) -> Result<String, String> {
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    let curl_bin = "curl.exe";
+    #[cfg(not(target_os = "windows"))]
+    let curl_bin = "curl";
+
+    let file_arg = format!("files[]=@{}", temp_path_str);
+    let mut cmd = Command::new(curl_bin);
+    cmd.args([
+        "-s",
+        "--max-time",
+        "5",
+        "-F",
+        &file_arg,
+        "https://uguu.se/upload",
+    ]);
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run uguu upload: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if let Some(files) = json["files"].as_array() {
+            if let Some(first) = files.first() {
+                if let Some(url) = first["url"].as_str() {
+                    return Ok(url.to_string());
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "uguu upload failed: {}",
+        stdout.chars().take(80).collect::<String>()
+    ))
+}
+
+/// Uploads the cropped image to kappa.lol (~600ms fallback, serves direct image/png).
+fn upload_to_kappa(temp_path: &PathBuf) -> Result<String, String> {
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    let curl_bin = "curl.exe";
+    #[cfg(not(target_os = "windows"))]
+    let curl_bin = "curl";
+
+    let file_arg = format!("file=@{}", temp_path_str);
+    let mut cmd = Command::new(curl_bin);
+    cmd.args([
+        "-s",
+        "--max-time",
+        "5",
+        "-F",
+        &file_arg,
+        "https://kappa.lol/api/upload",
+    ]);
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run kappa.lol upload: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+        if let Some(link) = json["link"].as_str() {
+            let ext = json["ext"].as_str().unwrap_or(".png");
+            if link.ends_with(ext) {
+                return Ok(link.to_string());
+            } else {
+                return Ok(format!("{}{}", link, ext));
+            }
+        }
+    }
+
+    Err(format!(
+        "kappa.lol upload failed: {}",
+        stdout.chars().take(80).collect::<String>()
+    ))
+}
+
+/// Uploads the cropped image to freeimage.host as tertiary fallback.
 fn upload_to_freeimage(temp_path: &PathBuf) -> Result<String, String> {
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
@@ -320,7 +569,7 @@ fn upload_to_freeimage(temp_path: &PathBuf) -> Result<String, String> {
     cmd.args([
         "-s",
         "--max-time",
-        "12",
+        "6",
         "-F",
         "key=6d207e02198a847aa98d0a2a901485a5",
         "-F",
@@ -356,26 +605,53 @@ fn upload_to_freeimage(temp_path: &PathBuf) -> Result<String, String> {
     ))
 }
 
-/// Uploads the cropped image to a public CDN and opens `https://lens.google.com/uploadbyurl?url=...`
-/// in the user's browser, allowing Google Lens to fetch and process the image natively.
+/// Immediately hides the overlay, uploads the cropped image to a raw-image CDN (`image/png`),
+/// and opens `https://lens.google.com/uploadbyurl?url=...` in the foreground browser window.
 #[tauri::command]
-async fn search_google_lens(state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn search_google_lens(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    // 1. Immediately hide the fullscreen overlay so the user never has to press ESC
+    //    and the always-on-top window never blocks the browser from taking focus.
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_fullscreen(false);
+        let _ = window.hide();
+    }
+    let _ = app_handle.emit("view-mode", "settings");
+
     let temp_path = write_crop_to_temp_file(&state)?;
     let _ = copy_file_to_os_clipboard(&temp_path);
 
-    println!("🌐 [DeskLens] Preparing cropped slice for Google Lens...");
+    println!("🌐 [DeskLens] Uploading cropped slice to raw-image visual search CDN...");
 
-    match upload_to_freeimage(&temp_path) {
+    let upload_path = temp_path.clone();
+    let host_result = tauri::async_runtime::spawn_blocking(move || {
+        if let Ok(url) = upload_to_uguu(&upload_path) {
+            println!("⚡ [DeskLens] Fast upload via uguu.se succeeded: {url}");
+            return Ok(url);
+        }
+        if let Ok(url) = upload_to_kappa(&upload_path) {
+            println!("⚡ [DeskLens] Fast upload via kappa.lol succeeded: {url}");
+            return Ok(url);
+        }
+        println!("⚠️ [DeskLens] Trying freeimage.host fallback...");
+        upload_to_freeimage(&upload_path)
+    })
+    .await
+    .map_err(|e| format!("Image upload task failed: {e}"))?;
+
+    match host_result {
         Ok(direct_img_url) => {
-            println!("✅ [DeskLens] Hosted image URL: {direct_img_url}");
             let encoded = url_encode(&direct_img_url);
-            let lens_url = format!("https://lens.google.com/uploadbyurl?url={encoded}");
-            println!("🔍 [DeskLens] Launching Google Lens: {lens_url}");
+            let lens_url = format!("https://lens.google.com/uploadbyurl?url={encoded}&hl=pt-BR");
+            println!("🔍 [DeskLens] Launching Google Lens by URL: {lens_url}");
             open_external_url(&lens_url)?;
             Ok(lens_url)
         }
         Err(err) => {
-            eprintln!("⚠️ [DeskLens] Hosting failed ({err}). Opening Google Images with clipboard fallback...");
+            eprintln!("⚠️ [DeskLens] Hosting failed ({err}). Opening Google Images (image is on the clipboard)...");
             let fallback_url = "https://images.google.com/";
             open_external_url(fallback_url)?;
             Ok(fallback_url.to_string())
@@ -454,6 +730,15 @@ async fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, 
             .spawn();
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(dir) = file_path.parent() {
+            let _ = Command::new("xdg-open")
+                .arg(dir)
+                .spawn();
+        }
+    }
+
     Ok(path_str)
 }
 
@@ -470,7 +755,74 @@ pub fn copy_plain_text_to_clipboard(text: &str) -> Result<(), String> {
         Clipboard::SetContent(&package)
             .map_err(|e| format!("Failed to set clipboard content: {e}"))?;
         let _ = Clipboard::Flush();
+        return Ok(());
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        // 1. Try arboard cross-platform clipboard
+        if let Ok(mut cb) = arboard::Clipboard::new() {
+            if cb.set_text(text.to_string()).is_ok() {
+                return Ok(());
+            }
+        }
+
+        // 2. Fallback: wl-copy (Wayland)
+        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            if let Ok(mut child) = Command::new("wl-copy")
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                if let Ok(status) = child.wait() {
+                    if status.success() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback: xclip (X11)
+        if let Ok(mut child) = Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // 4. Fallback: xsel (X11)
+        if let Ok(mut child) = Command::new("xsel")
+            .args(["--clipboard", "--input"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    return Ok(());
+                }
+            }
+        }
+
+        return Err("Failed to copy text to clipboard: install wl-clipboard (for Wayland) or xclip (for X11)".to_string());
+    }
+
+    #[allow(unreachable_code)]
     Ok(())
 }
 
@@ -523,6 +875,86 @@ async fn copy_text_from_crop(state: tauri::State<'_, AppState>) -> Result<String
     Ok(text)
 }
 
+/// Copies arbitrary plain text directly to the native OS clipboard.
+#[tauri::command]
+async fn copy_text_to_clipboard(text: String) -> Result<(), String> {
+    copy_plain_text_to_clipboard(&text)
+}
+
+/// Linux IPC listener: listens on /tmp/desklens_<uid>.sock for global hotkey trigger signals.
+#[cfg(target_os = "linux")]
+fn start_ipc_listener(app_handle: tauri::AppHandle) {
+    let uid = unsafe { libc::getuid() };
+    let socket_path = format!("/tmp/desklens_{}.sock", uid);
+    let _ = std::fs::remove_file(&socket_path);
+
+    std::thread::spawn(move || {
+        use std::io::Read;
+        use std::os::unix::net::UnixListener;
+
+        let listener = match UnixListener::bind(&socket_path) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("⚠️ [DeskLens IPC] Could not bind socket {}: {}", socket_path, e);
+                return;
+            }
+        };
+
+        println!("🚀 [DeskLens IPC] Listening on {} for global trigger signals.", socket_path);
+
+        for stream in listener.incoming() {
+            if let Ok(mut stream) = stream {
+                let mut buffer = [0u8; 128];
+                if let Ok(n) = stream.read(&mut buffer) {
+                    let msg = String::from_utf8_lossy(&buffer[..n]);
+                    if msg.contains("trigger") {
+                        println!("🎯 [DeskLens IPC] Received trigger command from system shortcut!");
+                        capture_and_display_overlay(&app_handle);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Triggers screen capture and presents the fullscreen interactive overlay.
+fn capture_and_display_overlay(app_handle: &tauri::AppHandle) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        // Hide results panel before capturing so it doesn't obstruct the screen
+        if let Some(results_win) = app_handle.get_webview_window("results") {
+            let _ = results_win.hide();
+        }
+
+        // 1. Capture clean screen before opening overlay
+        match capture_screen_raw() {
+            Ok(raw_image) => {
+                if let Ok(data_url) = encode_png_data_url(&raw_image) {
+                    // Store image in AppState for instant cropping
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        if let Ok(mut lock) = state.current_screenshot.lock() {
+                            *lock = Some(raw_image);
+                        }
+                    }
+
+                    // 2. Broadcast captured image globally to frontend
+                    let _ = app_handle.emit("screenshot-captured", &data_url);
+                    let _ = app_handle.emit("view-mode", "overlay");
+
+                    // 3. Show window first so GTK realizes it properly before entering fullscreen
+                    let _ = window.show();
+                    let _ = window.set_fullscreen(true);
+                    let _ = window.set_always_on_top(true);
+                    let _ = window.set_focus();
+                    println!("✨ [DeskLens] Screen captured and overlay active.");
+                }
+            }
+            Err(err) => {
+                eprintln!("❌ [DeskLens] Error capturing screen: {err}");
+            }
+        }
+    }
+}
+
 /// Closes the visual search results window.
 #[tauri::command]
 async fn close_results_window(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -534,6 +966,9 @@ async fn close_results_window(app_handle: tauri::AppHandle) -> Result<(), String
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let display_info = LinuxDisplayInfo::detect();
+    display_info.log_startup();
+
     tauri::Builder::default()
         .manage(AppState {
             current_screenshot: Mutex::new(None),
@@ -563,16 +998,28 @@ pub fn run() {
             save_crop_to_disk,
             close_results_window,
             extract_text_from_crop,
-            copy_text_from_crop
+            copy_text_from_crop,
+            copy_text_to_clipboard,
+            translate_on_screen
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            #[cfg(target_os = "linux")]
+            start_ipc_listener(app.handle().clone());
+
             // On macOS, hide dock icon (Accessory mode)
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             // =========================================================================
-            // SYSTEM TRAY: Interactive Menu (Settings & Quit)
+            // SYSTEM TRAY: Interactive Menu (Capture, Settings & Quit)
             // =========================================================================
+            let capture_item = MenuItem::with_id(
+                app,
+                "capture",
+                "Capture Screen (Ctrl+Shift+X)",
+                true,
+                None::<&str>,
+            )?;
             let settings_item = MenuItem::with_id(
                 app,
                 "settings",
@@ -588,17 +1035,23 @@ pub fn run() {
                 None::<&str>,
             )?;
 
-            let tray_menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
+            let tray_menu = Menu::with_items(app, &[&capture_item, &settings_item, &quit_item])?;
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .tooltip("DeskLens — Google Lens for Desktop")
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "capture" => {
+                        println!("📸 [DeskLens] Screen capture triggered from System Tray...");
+                        capture_and_display_overlay(app);
+                    }
                     "settings" => {
                         println!("⚙️ [DeskLens] Opening Settings window...");
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.set_fullscreen(false);
+                            let _ = window.set_size(tauri::LogicalSize::new(520.0, 380.0));
+                            let _ = window.center();
                             let _ = app.emit("view-mode", "settings");
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -627,57 +1080,46 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
 
-            app.handle().plugin(
+            // Register global shortcut plugin safely without ? to avoid crashing on init failure
+            if let Err(plugin_err) = app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler(move |_app, shortcut, event| {
                         if shortcut == &ctrl_shift_x && event.state() == ShortcutState::Pressed {
                             println!(
                                 "🎯 [DeskLens] Global shortcut (Ctrl + Shift + X) triggered! Capturing screen..."
                             );
-
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                // Hide results panel before capturing so it doesn't obstruct the screen
-                                if let Some(results_win) = app_handle.get_webview_window("results") {
-                                    let _ = results_win.hide();
-                                }
-
-                                // 1. Capture clean screen before opening overlay
-                                match capture_screen_raw() {
-                                    Ok(raw_image) => {
-                                        if let Ok(data_url) = encode_png_data_url(&raw_image) {
-                                            // Store image in AppState for instant cropping
-                                            if let Some(state) = app_handle.try_state::<AppState>() {
-                                                if let Ok(mut lock) = state.current_screenshot.lock() {
-                                                    *lock = Some(raw_image);
-                                                }
-                                            }
-
-                                            // 2. Broadcast captured image globally to frontend
-                                            let _ = app_handle.emit("screenshot-captured", &data_url);
-                                            let _ = app_handle.emit("view-mode", "overlay");
-
-                                            // 3. Make window fullscreen, always on top and visible
-                                            let _ = window.set_fullscreen(true);
-                                            let _ = window.set_always_on_top(true);
-                                            let _ = window.show();
-                                            let _ = window.set_focus();
-                                            println!(
-                                                "✨ [DeskLens] Screen captured and overlay active."
-                                            );
-                                        }
-                                    }
-                                    Err(err) => {
-                                        eprintln!("❌ [DeskLens] Error capturing screen: {err}");
-                                    }
-                                }
-                            }
+                            capture_and_display_overlay(&app_handle);
                         }
                     })
                     .build(),
-            )?;
+            ) {
+                eprintln!("⚠️ [DeskLens] Failed to initialize global shortcut plugin: {plugin_err}");
+            }
 
-            app.global_shortcut().register(ctrl_shift_x)?;
-            println!("🚀 [DeskLens] Invisible engine started in system tray. Waiting for Ctrl + Shift + X...");
+            match app.global_shortcut().register(ctrl_shift_x) {
+                Ok(()) => {
+                    println!("🚀 [DeskLens] Global shortcut (Ctrl + Shift + X) registered successfully.");
+                    if display_info.is_wayland() && display_info.gdk_backend.as_deref() != Some("x11") {
+                        println!("ℹ️ [DeskLens] Note: Running on Wayland with native backend.");
+                        println!("   Wayland restricts global hotkey capture when non-Xwayland windows are focused.");
+                        println!("   • Tip: Run with 'GDK_BACKEND=x11 ./run-linux.sh' for system-wide shortcuts,");
+                        println!("   • Or use the System Tray icon menu ('Capture Screen').");
+                    }
+                }
+                Err(err) => {
+                    eprintln!("⚠️ [DeskLens] Global shortcut (Ctrl+Shift+X) registration warning: {err}");
+                    if display_info.is_wayland() {
+                        eprintln!("ℹ️ [DeskLens] Wayland Security Policy: Direct global key grabbing is restricted by the compositor.");
+                        eprintln!("   • Solution 1: Run with 'GDK_BACKEND=x11 ./run-linux.sh' to enable Xwayland shortcut interception.");
+                        eprintln!("   • Solution 2: Trigger screen capture anytime from the System Tray icon menu.");
+                        eprintln!("   • Solution 3: Bind a custom shortcut in your desktop settings (e.g. GNOME Settings -> Keyboard -> Shortcuts).");
+                    } else {
+                        eprintln!("ℹ️ [DeskLens] The shortcut may be reserved or conflicting. Screen capture is still available via System Tray.");
+                    }
+                }
+            }
+
+            println!("🚀 [DeskLens] Invisible engine started in system tray.");
 
             Ok(())
         })

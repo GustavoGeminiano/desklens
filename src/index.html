@@ -9,8 +9,10 @@
   <body>
     <!-- Fullscreen Frozen Overlay View (Sprints 1 & 2) -->
     <div id="overlay-view" class="overlay-container hidden">
-      <!-- Background Frozen Desktop Screenshot -->
-      <img id="frozen-image" alt="Frozen Desktop Frame" />
+      <!-- Background Frozen Desktop Screenshot Container (Requirement R3) -->
+      <div id="capture-container" class="capture-container">
+        <img id="frozen-image" alt="Frozen Desktop Frame" />
+      </div>
       
       <!-- Ambient Outer Lens Glow Frame -->
       <div class="lens-frame"></div>
@@ -70,6 +72,9 @@
             </div>
             <button id="search-action-btn" class="action-btn primary" title="Search with Google Lens">
               <span>🔍</span> Search Image
+            </button>
+            <button id="translate-action-btn" class="action-btn secondary" title="Translate on screen (Portuguese)">
+              <span>🌐</span> Translate
             </button>
             <button id="ocr-action-btn" class="action-btn secondary" title="Extract text via OCR">
               <span>📝</span> Copy Text

@@ -186,7 +186,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   async function triggerOcrDetection(naturalW, naturalH) {
     if (!window.__TAURI__?.core?.invoke) return;
     if (ocrTextBox) {
-      ocrTextBox.value = "Detecting text with Windows OCR...";
+      ocrTextBox.value = "Detecting text with OCR...";
     }
     if (ocrHighlightOverlay) {
       ocrHighlightOverlay.innerHTML = "";
