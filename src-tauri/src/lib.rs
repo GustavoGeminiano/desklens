@@ -1064,13 +1064,13 @@ pub fn run() {
                     _ => {}
                 });
 
-            let tray_icon = app.default_window_icon().cloned().unwrap_or_else(|| {
+            let tray_icon = {
                 let raw_bytes = include_bytes!("../icons/128x128.png");
                 let img = image::load_from_memory(raw_bytes).expect("Valid 128x128 tray icon asset");
                 let rgba = img.to_rgba8();
                 let (w, h) = (rgba.width(), rgba.height());
                 tauri::image::Image::new_owned(rgba.into_raw(), w, h)
-            });
+            };
 
             let _tray = tray_builder.icon(tray_icon).build(app)?;
 

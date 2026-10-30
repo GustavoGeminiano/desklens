@@ -25,6 +25,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const ocrActionBtn = document.getElementById("ocr-action-btn");
   const sourceLangSelect = document.getElementById("source-lang-select");
   const targetLangSelect = document.getElementById("target-lang-select");
+  const langSelectorGroup = document.getElementById("lang-selector-group");
 
   // State
   let isSelecting = false;
@@ -93,6 +94,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     currentCropDataUrl = null;
     cropBox.classList.add("hidden");
     cropActions.classList.add("hidden");
+    if (langSelectorGroup) {
+      langSelectorGroup.classList.add("hidden");
+    }
     maskCutout.setAttribute("width", 0);
     maskCutout.setAttribute("height", 0);
 
@@ -652,6 +656,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       try {
         localStorage.setItem(STORAGE_KEY_SOURCE_LANG, sourceLangSelect.value);
       } catch (_) {}
+      if (activeTranslatedText) {
+        triggerTranslation();
+      }
     });
   }
 
@@ -663,138 +670,171 @@ window.addEventListener("DOMContentLoaded", async () => {
         localStorage.setItem(STORAGE_KEY_TARGET_LANG, targetLangSelect.value);
       } catch (_) {}
       updateTranslateButtonTitle();
+      if (activeTranslatedText) {
+        triggerTranslation();
+      }
     });
+  }
+
+  // Hide language selectors by default until the user clicks Translate
+  if (langSelectorGroup) {
+    langSelectorGroup.classList.add("hidden");
   }
 
   // =========================================================================
   // Translate Action Button Handler (Requirement R3)
   // =========================================================================
-  if (translateActionBtn) {
-    translateActionBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const originalHtml = translateActionBtn.innerHTML;
-      translateActionBtn.innerHTML = "<span>⏳</span> Translating...";
+  async function triggerTranslation() {
+    if (!translateActionBtn) return;
+    const originalHtml = translateActionBtn.innerHTML;
+    translateActionBtn.innerHTML = "<span>⏳</span> Translating...";
 
-      try {
-        if (!currentCropDataUrl) {
-          await requestBackendCrop();
-        }
+    if (langSelectorGroup) {
+      langSelectorGroup.classList.remove("hidden");
+      repositionCropActions();
+    }
 
-        if (window.__TAURI__?.core?.invoke) {
-          // 1. Get OCR bounding boxes from current crop
-          const ocrResult = await window.__TAURI__.core.invoke("extract_text_from_crop");
-          const flatBoxes = [];
+    try {
+      if (!currentCropDataUrl) {
+        await requestBackendCrop();
+      }
 
-          if (ocrResult?.boxes && ocrResult.boxes.length > 0) {
-            for (const b of ocrResult.boxes) {
-              if (b.text && b.width && b.height) {
-                flatBoxes.push({
-                  text: b.text,
-                  x: b.x,
-                  y: b.y,
-                  width: b.width,
-                  height: b.height,
-                });
+      if (window.__TAURI__?.core?.invoke) {
+        // 1. Get OCR bounding boxes from current crop
+        const ocrResult = await window.__TAURI__.core.invoke("extract_text_from_crop");
+        const flatBoxes = [];
+
+        if (ocrResult?.boxes && ocrResult.boxes.length > 0) {
+          for (const b of ocrResult.boxes) {
+            if (b.text && b.width && b.height) {
+              flatBoxes.push({
+                text: b.text,
+                x: b.x,
+                y: b.y,
+                width: b.width,
+                height: b.height,
+              });
+            }
+          }
+        } else if (ocrResult?.lines) {
+          for (const line of ocrResult.lines) {
+            if (line.words) {
+              for (const word of line.words) {
+                if (word.text && word.width && word.height) {
+                  flatBoxes.push({
+                    text: word.text,
+                    x: word.x,
+                    y: word.y,
+                    width: word.width,
+                    height: word.height,
+                  });
+                }
               }
             }
-          } else if (ocrResult?.lines) {
-            for (const line of ocrResult.lines) {
-              if (line.words) {
-                for (const word of line.words) {
-                  if (word.text && word.width && word.height) {
-                    flatBoxes.push({
-                      text: word.text,
-                      x: word.x,
-                      y: word.y,
-                      width: word.width,
-                      height: word.height,
-                    });
-                  }
+          }
+        }
+
+        if (flatBoxes.length === 0) {
+          translateActionBtn.innerHTML = "<span>⚠️</span> No text found";
+          setTimeout(() => {
+            translateActionBtn.innerHTML = originalHtml;
+          }, 1800);
+          return;
+        }
+
+        const selectedTargetLang = targetLangSelect ? targetLangSelect.value : "pt";
+        const selectedSourceLang = sourceLangSelect ? sourceLangSelect.value : "auto";
+
+        // 2. Invoke translation command
+        const translatedBoxes = await window.__TAURI__.core.invoke("translate_on_screen", {
+          boxes: flatBoxes,
+          targetLang: selectedTargetLang,
+          sourceLang: selectedSourceLang,
+        });
+
+        // Snapshot current selection rect to prevent stale rendering if user modifies crop
+        const rectSnapshot = { ...currentRect };
+
+        // 3. Map crop pixel coordinates to container CSS coordinates
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          if (rectSnapshot.w <= 0 || rectSnapshot.h <= 0) {
+            translateActionBtn.innerHTML = originalHtml;
+            return;
+          }
+          const realW = tempImg.naturalWidth || rectSnapshot.w;
+          const realH = tempImg.naturalHeight || rectSnapshot.h;
+          const scaleX = rectSnapshot.w / realW;
+          const scaleY = rectSnapshot.h / realH;
+
+          const mappedBoxes = (translatedBoxes || []).map((b) => ({
+            ...b,
+            x: rectSnapshot.x + Math.round(b.x * scaleX),
+            y: rectSnapshot.y + Math.round(b.y * scaleY),
+            width: Math.round(b.width * scaleX),
+            height: Math.round(b.height * scaleY),
+          }));
+
+          // Resolve vertical collisions / overlaps between adjacent lines in document OCR
+          for (let i = 0; i < mappedBoxes.length; i++) {
+            const b1 = mappedBoxes[i];
+            if (b1.width <= 0 || b1.height <= 0) continue;
+            for (let j = 0; j < mappedBoxes.length; j++) {
+              if (i === j) continue;
+              const b2 = mappedBoxes[j];
+              if (b2.width <= 0 || b2.height <= 0) continue;
+              // If b2 starts inside b1's vertical span and b2 is at or below b1
+              if (b2.y >= b1.y && b2.y < b1.y + b1.height) {
+                const hOverlap = Math.max(0, Math.min(b1.x + b1.width, b2.x + b2.width) - Math.max(b1.x, b2.x));
+                const minW = Math.min(b1.width, b2.width);
+                if (minW > 0 && hOverlap / minW > 0.3) {
+                  b2.y = b1.y + b1.height + 2;
                 }
               }
             }
           }
 
-          if (flatBoxes.length === 0) {
-            translateActionBtn.innerHTML = "<span>⚠️</span> No text found";
-            setTimeout(() => {
-              translateActionBtn.innerHTML = originalHtml;
-            }, 1800);
-            return;
+          renderTranslationOverlays(mappedBoxes);
+
+          // Clear interactive word highlight layer so it doesn't double-render or overlap
+          if (cropTextHighlights) {
+            cropTextHighlights.innerHTML = "";
           }
 
-          const selectedTargetLang = targetLangSelect ? targetLangSelect.value : "pt";
-          const selectedSourceLang = sourceLangSelect ? sourceLangSelect.value : "auto";
+          // Store full translated text for the Copy action
+          activeTranslatedText = (translatedBoxes || [])
+            .map((b) => (b.translated_text || b.text || "").trim())
+            .filter(Boolean)
+            .join("\n");
 
-          // 2. Invoke translation command
-          const translatedBoxes = await window.__TAURI__.core.invoke("translate_on_screen", {
-            boxes: flatBoxes,
-            targetLang: selectedTargetLang,
-            sourceLang: selectedSourceLang,
-          });
+          if (ocrActionBtn) {
+            ocrActionBtn.innerHTML = "<span>📝</span> Copy Translation";
+          }
 
-          // Snapshot current selection rect to prevent stale rendering if user modifies crop
-          const rectSnapshot = { ...currentRect };
-
-          // 3. Map crop pixel coordinates to container CSS coordinates
-          const tempImg = new Image();
-          tempImg.onload = () => {
-            if (rectSnapshot.w <= 0 || rectSnapshot.h <= 0) {
-              translateActionBtn.innerHTML = originalHtml;
-              return;
-            }
-            const realW = tempImg.naturalWidth || rectSnapshot.w;
-            const realH = tempImg.naturalHeight || rectSnapshot.h;
-            const scaleX = rectSnapshot.w / realW;
-            const scaleY = rectSnapshot.h / realH;
-
-            const mappedBoxes = (translatedBoxes || []).map((b) => ({
-              ...b,
-              x: rectSnapshot.x + Math.round(b.x * scaleX),
-              y: rectSnapshot.y + Math.round(b.y * scaleY),
-              width: Math.round(b.width * scaleX),
-              height: Math.round(b.height * scaleY),
-            }));
-
-            renderTranslationOverlays(mappedBoxes);
-
-            // Rebuild the copy logic on top of the translated text: the interactive pills now
-            // carry the translated strings, so click / drag / double-click copy the translation.
-            const translatedItems = (translatedBoxes || []).map((b, idx) => ({
-              text: (b.translated_text || b.text || "").trim(),
-              x: b.x * scaleX,
-              y: b.y * scaleY,
-              width: b.width * scaleX,
-              height: b.height * scaleY,
-              lineIndex: idx,
-            }));
-            activeTranslatedText = translatedItems
-              .map((it) => it.text)
-              .filter(Boolean)
-              .join("\n");
-            renderInteractivePills(translatedItems, { translated: true });
-            if (ocrActionBtn) {
-              ocrActionBtn.innerHTML = "<span>📝</span> Copy Translation";
-            }
-
-            translateActionBtn.innerHTML = "<span>✅</span> Translated!";
-            setTimeout(() => {
-              translateActionBtn.innerHTML = originalHtml;
-            }, 2000);
-          };
-          tempImg.onerror = (err) => {
-            console.error("Failed to decode cropped image for translation overlays:", err);
+          translateActionBtn.innerHTML = "<span>✅</span> Translated!";
+          setTimeout(() => {
             translateActionBtn.innerHTML = originalHtml;
-          };
-          tempImg.src = currentCropDataUrl;
-        }
-      } catch (err) {
-        console.error("Failed to translate on screen:", err);
-        translateActionBtn.innerHTML = "<span>⚠️</span> Error";
-        setTimeout(() => {
+          }, 2000);
+        };
+        tempImg.onerror = (err) => {
+          console.error("Failed to decode cropped image for translation overlays:", err);
           translateActionBtn.innerHTML = originalHtml;
-        }, 1800);
+        };
+        tempImg.src = currentCropDataUrl;
       }
+    } catch (err) {
+      console.error("Failed to translate on screen:", err);
+      translateActionBtn.innerHTML = "<span>⚠️</span> Error";
+      setTimeout(() => {
+        translateActionBtn.innerHTML = originalHtml;
+      }, 1800);
+    }
+  }
+
+  if (translateActionBtn) {
+    translateActionBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await triggerTranslation();
     });
   }
 
