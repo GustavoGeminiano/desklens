@@ -324,7 +324,7 @@ fn test_adv_language_normalization_adversarial_utf8() {
 #[test]
 fn test_adv_translate_empty_boxes() {
     tauri::async_runtime::block_on(async {
-        let res = translate_on_screen(vec![], Some("pt-BR".to_string())).await;
+        let res = translate_on_screen(vec![], Some("pt-BR".to_string()), None).await;
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), vec![]);
     });
@@ -348,7 +348,12 @@ fn test_adv_translate_large_batch_chunking() {
         }
 
         let start = std::time::Instant::now();
-        let res = translate_on_screen(input_boxes.clone(), Some("pt-BR".to_string())).await;
+        let res = translate_on_screen(
+            input_boxes.clone(),
+            Some("pt-BR".to_string()),
+            Some("en".to_string()),
+        )
+        .await;
         let elapsed = start.elapsed();
 
         assert!(res.is_ok(), "Batch translation must succeed: {:?}", res.err());
@@ -407,7 +412,7 @@ fn test_adv_translate_special_characters_and_html() {
             },
         ];
 
-        let res = translate_on_screen(input_boxes.clone(), Some("pt".to_string())).await;
+        let res = translate_on_screen(input_boxes.clone(), Some("pt".to_string()), None).await;
         assert!(res.is_ok());
         let outputs = res.unwrap();
         assert_eq!(outputs.len(), 3);
@@ -450,7 +455,12 @@ fn test_adv_translate_network_failure_fallback() {
             },
         ];
 
-        let res = translate_on_screen(input_boxes.clone(), Some("pt".to_string())).await;
+        let res = translate_on_screen(
+            input_boxes.clone(),
+            Some("pt".to_string()),
+            Some("auto".to_string()),
+        )
+        .await;
 
         // Clean up environment variables immediately
         std::env::remove_var("HTTP_PROXY");

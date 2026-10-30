@@ -2,6 +2,7 @@
 node_modules/
 
 # Build e cache do Rust / Tauri
+target/
 src-tauri/target/
 src-tauri/gen/
 

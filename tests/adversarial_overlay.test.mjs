@@ -34,6 +34,9 @@ function setupEnvironment() {
       this.children = [];
       this.textContent = "";
       this.title = "";
+      this.value = "";
+      this.options = [];
+      this.selectedIndex = 0;
       this.eventListeners = {};
       this.parentNode = null;
     }
@@ -99,6 +102,8 @@ function setupEnvironment() {
     "search-action-btn": new MockElement("button", "search-action-btn"),
     "translate-action-btn": new MockElement("button", "translate-action-btn"),
     "ocr-action-btn": new MockElement("button", "ocr-action-btn"),
+    "source-lang-select": new MockElement("select", "source-lang-select"),
+    "target-lang-select": new MockElement("select", "target-lang-select"),
     "capture-container": new MockElement("div", "capture-container"),
   };
 

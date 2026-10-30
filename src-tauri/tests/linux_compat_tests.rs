@@ -181,15 +181,20 @@ fn test_real_xcap_query_on_host() {
                     .unwrap_or(&monitors[0]);
                 println!("Chosen monitor for capture: {:?}", chosen.name());
 
-                // Try capture_image on host monitor
-                match chosen.capture_image() {
-                    Ok(img) => {
-                        println!("Screen capture succeeded! Dimensions: {}x{}", img.width(), img.height());
-                        assert!(img.width() > 0 && img.height() > 0);
-                    }
-                    Err(e) => {
-                        println!("Screen capture returned error on this host environment: {e}");
-                        // Under headless CI or certain sandboxes, xcap capture might return an error, which should not panic
+                // On Wayland, xcap invokes xdg-desktop-portal ScreenCast which opens a GUI prompt
+                // blocking automated tests indefinitely. Skip interactive capture if WAYLAND_DISPLAY is set.
+                if std::env::var("WAYLAND_DISPLAY").is_ok() {
+                    println!("Wayland detected (xdg-desktop-portal interactive dialog); skipping capture_image in unattended test.");
+                } else {
+                    match chosen.capture_image() {
+                        Ok(img) => {
+                            println!("Screen capture succeeded! Dimensions: {}x{}", img.width(), img.height());
+                            assert!(img.width() > 0 && img.height() > 0);
+                        }
+                        Err(e) => {
+                            println!("Screen capture returned error on this host environment: {e}");
+                            // Under headless CI or certain sandboxes, xcap capture might return an error, which should not panic
+                        }
                     }
                 }
             }
@@ -198,4 +203,21 @@ fn test_real_xcap_query_on_host() {
             println!("xcap::Monitor::all() returned error: {e}");
         }
     }
+}
+
+#[test]
+fn test_tray_icon_assets_integrity() {
+    let raw_128 = include_bytes!("../icons/128x128.png");
+    let img_128 = image::load_from_memory(raw_128).expect("128x128 icon must be valid PNG");
+    assert_eq!(img_128.width(), 128);
+    assert_eq!(img_128.height(), 128);
+    let rgba_128 = img_128.to_rgba8();
+    assert_eq!(rgba_128.as_raw().len(), 128 * 128 * 4);
+
+    let raw_32 = include_bytes!("../icons/32x32.png");
+    let img_32 = image::load_from_memory(raw_32).expect("32x32 icon must be valid PNG");
+    assert_eq!(img_32.width(), 32);
+    assert_eq!(img_32.height(), 32);
+    let rgba_32 = img_32.to_rgba8();
+    assert_eq!(rgba_32.as_raw().len(), 32 * 32 * 4);
 }

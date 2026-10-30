@@ -1,6 +1,7 @@
 use desklens_lib::ocr::parse_tesseract_tsv;
 use desklens_lib::translation::{
-    normalize_target_lang, translate_on_screen, url_encode, TranslationBoxInput,
+    normalize_source_lang, normalize_target_lang, translate_on_screen, url_encode,
+    TranslationBoxInput,
 };
 
 #[test]
@@ -15,6 +16,20 @@ fn test_language_normalization() {
 }
 
 #[test]
+fn test_source_language_normalization() {
+    assert_eq!(normalize_source_lang(None), "auto");
+    assert_eq!(normalize_source_lang(Some("")), "auto");
+    assert_eq!(normalize_source_lang(Some("auto")), "auto");
+    assert_eq!(normalize_source_lang(Some("AUTO")), "auto");
+    assert_eq!(normalize_source_lang(Some("en")), "en");
+    assert_eq!(normalize_source_lang(Some("EN-US")), "en");
+    assert_eq!(normalize_source_lang(Some("pt")), "pt");
+    assert_eq!(normalize_source_lang(Some("es")), "es");
+    assert_eq!(normalize_source_lang(Some("ja")), "ja");
+    assert_eq!(normalize_source_lang(Some("zh")), "zh");
+}
+
+#[test]
 fn test_url_encoding_special_chars() {
     assert_eq!(url_encode("Hello World!"), "Hello%20World%21");
     assert_eq!(url_encode("foo&bar=baz"), "foo%26bar%3Dbaz");
@@ -24,7 +39,7 @@ fn test_url_encoding_special_chars() {
 #[test]
 fn test_translate_empty_input() {
     tauri::async_runtime::block_on(async {
-        let result = translate_on_screen(vec![], Some("pt".to_string())).await;
+        let result = translate_on_screen(vec![], Some("pt".to_string()), None).await;
         assert!(result.is_ok());
         let outputs = result.unwrap();
         assert!(outputs.is_empty());
@@ -51,7 +66,12 @@ fn test_translate_bounding_box_preservation_and_fallback() {
             },
         ];
 
-        let result = translate_on_screen(input_boxes.clone(), Some("pt-BR".to_string())).await;
+        let result = translate_on_screen(
+            input_boxes.clone(),
+            Some("pt-BR".to_string()),
+            Some("en".to_string()),
+        )
+        .await;
         assert!(result.is_ok(), "translate_on_screen must succeed without panicking");
         let outputs = result.unwrap();
 
@@ -106,4 +126,47 @@ fn test_ocr_to_translation_pipeline_contract() {
     assert_eq!(trans_inputs[0].y, 60.0);
     assert_eq!(trans_inputs[0].width, 150.0);
     assert_eq!(trans_inputs[0].height, 20.0);
+}
+
+#[test]
+fn test_translate_multilingual_arbitrary_languages() {
+    tauri::async_runtime::block_on(async {
+        let input_boxes = vec![
+            TranslationBoxInput {
+                text: "Hello world".to_string(),
+                x: 10.0,
+                y: 20.0,
+                width: 100.0,
+                height: 30.0,
+            },
+        ];
+
+        // 1. Explicit en -> es
+        let res_es = translate_on_screen(
+            input_boxes.clone(),
+            Some("es".to_string()),
+            Some("en".to_string()),
+        )
+        .await;
+        assert!(res_es.is_ok());
+        let out_es = res_es.unwrap();
+        assert_eq!(out_es.len(), 1);
+        assert_eq!(out_es[0].x, 10.0);
+        assert_eq!(out_es[0].y, 20.0);
+        assert!(!out_es[0].translated_text.is_empty());
+
+        // 2. Auto detect -> fr
+        let res_fr = translate_on_screen(
+            input_boxes.clone(),
+            Some("fr".to_string()),
+            Some("auto".to_string()),
+        )
+        .await;
+        assert!(res_fr.is_ok());
+        let out_fr = res_fr.unwrap();
+        assert_eq!(out_fr.len(), 1);
+        assert_eq!(out_fr[0].x, 10.0);
+        assert_eq!(out_fr[0].y, 20.0);
+        assert!(!out_fr[0].translated_text.is_empty());
+    });
 }

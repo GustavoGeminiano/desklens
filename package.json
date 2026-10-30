@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "DeskLens - Google Lens for Desktop (Windows & Linux)",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

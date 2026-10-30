@@ -23,6 +23,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const searchActionBtn = document.getElementById("search-action-btn");
   const translateActionBtn = document.getElementById("translate-action-btn");
   const ocrActionBtn = document.getElementById("ocr-action-btn");
+  const sourceLangSelect = document.getElementById("source-lang-select");
+  const targetLangSelect = document.getElementById("target-lang-select");
 
   // State
   let isSelecting = false;
@@ -420,7 +422,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     cropActions.classList.remove("hidden");
 
     const margin = 12;
-    const toolbarW = cropActions.offsetWidth || 330;
+    const toolbarW = cropActions.offsetWidth || 520;
     const toolbarH = cropActions.offsetHeight || 46;
 
     // 1. Horizontal clamping so buttons never get cut off at left or right screen edges
@@ -617,6 +619,54 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   // =========================================================================
+  // Language Selection Setup & Persistence (Requirement R2)
+  // =========================================================================
+  const STORAGE_KEY_SOURCE_LANG = "desklens_source_lang";
+  const STORAGE_KEY_TARGET_LANG = "desklens_target_lang";
+
+  function getStoredSourceLang() {
+    try {
+      return localStorage.getItem(STORAGE_KEY_SOURCE_LANG) || "auto";
+    } catch (_) {
+      return "auto";
+    }
+  }
+
+  function getStoredTargetLang() {
+    try {
+      return localStorage.getItem(STORAGE_KEY_TARGET_LANG) || "pt";
+    } catch (_) {
+      return "pt";
+    }
+  }
+
+  function updateTranslateButtonTitle() {
+    if (!translateActionBtn) return;
+    const targetText = targetLangSelect?.options?.[targetLangSelect.selectedIndex]?.text || targetLangSelect?.value || "Portuguese";
+    translateActionBtn.title = `Translate on screen (${targetText})`;
+  }
+
+  if (sourceLangSelect) {
+    sourceLangSelect.value = getStoredSourceLang();
+    sourceLangSelect.addEventListener("change", () => {
+      try {
+        localStorage.setItem(STORAGE_KEY_SOURCE_LANG, sourceLangSelect.value);
+      } catch (_) {}
+    });
+  }
+
+  if (targetLangSelect) {
+    targetLangSelect.value = getStoredTargetLang();
+    updateTranslateButtonTitle();
+    targetLangSelect.addEventListener("change", () => {
+      try {
+        localStorage.setItem(STORAGE_KEY_TARGET_LANG, targetLangSelect.value);
+      } catch (_) {}
+      updateTranslateButtonTitle();
+    });
+  }
+
+  // =========================================================================
   // Translate Action Button Handler (Requirement R3)
   // =========================================================================
   if (translateActionBtn) {
@@ -673,10 +723,14 @@ window.addEventListener("DOMContentLoaded", async () => {
             return;
           }
 
+          const selectedTargetLang = targetLangSelect ? targetLangSelect.value : "pt";
+          const selectedSourceLang = sourceLangSelect ? sourceLangSelect.value : "auto";
+
           // 2. Invoke translation command
           const translatedBoxes = await window.__TAURI__.core.invoke("translate_on_screen", {
             boxes: flatBoxes,
-            targetLang: "pt",
+            targetLang: selectedTargetLang,
+            sourceLang: selectedSourceLang,
           });
 
           // Snapshot current selection rect to prevent stale rendering if user modifies crop

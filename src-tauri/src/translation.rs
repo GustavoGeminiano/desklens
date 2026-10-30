@@ -44,6 +44,29 @@ pub fn normalize_target_lang(lang: Option<&str>) -> String {
     }
 }
 
+/// Normalizes source language code (e.g. None or "" or "auto" -> "auto", "EN" -> "en")
+pub fn normalize_source_lang(lang: Option<&str>) -> String {
+    match lang.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        None => "auto".to_string(),
+        Some(s) => {
+            let lower = s.to_lowercase();
+            if lower == "auto" {
+                "auto".to_string()
+            } else if lower.starts_with("pt") {
+                "pt".to_string()
+            } else if lower.starts_with("en") {
+                "en".to_string()
+            } else if lower.starts_with("es") {
+                "es".to_string()
+            } else if lower.len() >= 2 {
+                lower.chars().take(2).collect::<String>()
+            } else {
+                lower
+            }
+        }
+    }
+}
+
 /// Simple URL encoder for query parameters (RFC 3986)
 pub fn url_encode(input: &str) -> String {
     let mut encoded = String::with_capacity(input.len() * 3);
@@ -65,6 +88,7 @@ async fn translate_chunk_google(
     client: &reqwest::Client,
     texts: &[String],
     target_lang: &str,
+    source_lang: &str,
 ) -> Result<Vec<String>, String> {
     if texts.is_empty() {
         return Ok(Vec::new());
@@ -73,9 +97,9 @@ async fn translate_chunk_google(
     let url = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex";
 
     // Manually format application/x-www-form-urlencoded payload:
-    // sl=auto&tl=<target_lang>&q=<text1>&q=<text2>...
+    // sl=<source_lang>&tl=<target_lang>&q=<text1>&q=<text2>...
     let mut parts: Vec<String> = Vec::with_capacity(texts.len() + 2);
-    parts.push("sl=auto".to_string());
+    parts.push(format!("sl={}", url_encode(source_lang)));
     parts.push(format!("tl={}", url_encode(target_lang)));
     for text in texts {
         parts.push(format!("q={}", url_encode(text)));
@@ -122,6 +146,13 @@ async fn translate_chunk_google(
                 }
                 continue;
             }
+        } else if let Some(trans_str) = item.as_str() {
+            if trans_str.trim().is_empty() {
+                translated.push(texts.get(idx).cloned().unwrap_or_default());
+            } else {
+                translated.push(trans_str.to_string());
+            }
+            continue;
         }
         translated.push(texts.get(idx).cloned().unwrap_or_default());
     }
@@ -138,10 +169,13 @@ async fn translate_single_mymemory(
     client: &reqwest::Client,
     text: &str,
     target_lang: &str,
+    source_lang: &str,
 ) -> Result<String, String> {
+    let sl = if source_lang == "auto" { "autodetect" } else { source_lang };
     let url = format!(
-        "https://api.mymemory.translated.net/get?q={}&langpair=autodetect|{}",
+        "https://api.mymemory.translated.net/get?q={}&langpair={}|{}",
         url_encode(text),
+        url_encode(sl),
         url_encode(target_lang)
     );
 
@@ -171,6 +205,7 @@ async fn translate_batch_deepl(
     client: &reqwest::Client,
     texts: &[String],
     target_lang: &str,
+    source_lang: &str,
     api_key: &str,
 ) -> Result<Vec<String>, String> {
     let endpoint = if api_key.ends_with(":fx") {
@@ -185,10 +220,14 @@ async fn translate_batch_deepl(
         target_lang
     };
 
-    let payload = serde_json::json!({
+    let mut payload = serde_json::json!({
         "text": texts,
         "target_lang": target_deepl
     });
+
+    if source_lang != "auto" {
+        payload["source_lang"] = serde_json::Value::String(source_lang.to_uppercase());
+    }
 
     let resp = client
         .post(endpoint)
@@ -222,6 +261,7 @@ async fn translate_batch_gemini(
     client: &reqwest::Client,
     texts: &[String],
     target_lang: &str,
+    source_lang: &str,
     api_key: &str,
 ) -> Result<Vec<String>, String> {
     let url = format!(
@@ -229,11 +269,20 @@ async fn translate_batch_gemini(
         api_key
     );
 
-    let prompt = format!(
-        "Translate each of the following lines into language code '{}'. Return ONLY a JSON array of strings in identical order without markdown code fences:\n{}",
-        target_lang,
-        serde_json::to_string(texts).map_err(|e| e.to_string())?
-    );
+    let prompt = if source_lang == "auto" {
+        format!(
+            "Translate each of the following lines into language code '{}'. Return ONLY a JSON array of strings in identical order without markdown code fences:\n{}",
+            target_lang,
+            serde_json::to_string(texts).map_err(|e| e.to_string())?
+        )
+    } else {
+        format!(
+            "Translate each of the following lines from language code '{}' into language code '{}'. Return ONLY a JSON array of strings in identical order without markdown code fences:\n{}",
+            source_lang,
+            target_lang,
+            serde_json::to_string(texts).map_err(|e| e.to_string())?
+        )
+    };
 
     let payload = serde_json::json!({
         "contents": [{
@@ -272,12 +321,13 @@ async fn translate_all_chunks(
     client: &reqwest::Client,
     texts: &[String],
     target_lang: &str,
+    source_lang: &str,
 ) -> Vec<String> {
     const CHUNK_SIZE: usize = 30;
     let mut results = Vec::with_capacity(texts.len());
 
     for chunk in texts.chunks(CHUNK_SIZE) {
-        match translate_chunk_google(client, chunk, target_lang).await {
+        match translate_chunk_google(client, chunk, target_lang, source_lang).await {
             Ok(translated_chunk) => {
                 results.extend(translated_chunk);
             }
@@ -288,7 +338,7 @@ async fn translate_all_chunks(
                         results.push(item.clone());
                         continue;
                     }
-                    match translate_single_mymemory(client, item, target_lang).await {
+                    match translate_single_mymemory(client, item, target_lang, source_lang).await {
                         Ok(fallback_text) => results.push(fallback_text),
                         Err(_) => results.push(item.clone()),
                     }
@@ -306,12 +356,14 @@ async fn translate_all_chunks(
 pub async fn translate_on_screen(
     boxes: Vec<TranslationBoxInput>,
     target_lang: Option<String>,
+    source_lang: Option<String>,
 ) -> Result<Vec<TranslationBoxOutput>, String> {
     if boxes.is_empty() {
         return Ok(Vec::new());
     }
 
     let target = normalize_target_lang(target_lang.as_deref());
+    let source = normalize_source_lang(source_lang.as_deref());
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
@@ -322,7 +374,7 @@ pub async fn translate_on_screen(
     // Check if user has DEEPL_API_KEY or GEMINI_API_KEY configured in environment
     let translated_texts = if let Ok(deepl_key) = std::env::var("DEEPL_API_KEY") {
         if !deepl_key.trim().is_empty() {
-            translate_batch_deepl(&client, &texts, &target, &deepl_key)
+            translate_batch_deepl(&client, &texts, &target, &source, &deepl_key)
                 .await
                 .unwrap_or_else(|e| {
                     eprintln!("⚠️ [DeskLens] DeepL API failed ({e}), falling back to public endpoint.");
@@ -333,7 +385,7 @@ pub async fn translate_on_screen(
         }
     } else if let Ok(gemini_key) = std::env::var("GEMINI_API_KEY") {
         if !gemini_key.trim().is_empty() {
-            translate_batch_gemini(&client, &texts, &target, &gemini_key)
+            translate_batch_gemini(&client, &texts, &target, &source, &gemini_key)
                 .await
                 .unwrap_or_else(|e| {
                     eprintln!("⚠️ [DeskLens] Gemini API failed ({e}), falling back to public endpoint.");
@@ -349,7 +401,7 @@ pub async fn translate_on_screen(
     let final_translated = if translated_texts.len() == texts.len() {
         translated_texts
     } else {
-        translate_all_chunks(&client, &texts, &target).await
+        translate_all_chunks(&client, &texts, &target, &source).await
     };
 
     let outputs: Vec<TranslationBoxOutput> = boxes
@@ -366,8 +418,9 @@ pub async fn translate_on_screen(
         .collect();
 
     println!(
-        "🌐 [DeskLens] Translated {} text blocks to '{}'.",
+        "🌐 [DeskLens] Translated {} text blocks ({} -> {}).",
         outputs.len(),
+        source,
         target
     );
 
@@ -391,6 +444,19 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_source_lang() {
+        assert_eq!(normalize_source_lang(None), "auto");
+        assert_eq!(normalize_source_lang(Some("")), "auto");
+        assert_eq!(normalize_source_lang(Some("   ")), "auto");
+        assert_eq!(normalize_source_lang(Some("auto")), "auto");
+        assert_eq!(normalize_source_lang(Some("AUTO")), "auto");
+        assert_eq!(normalize_source_lang(Some("en-US")), "en");
+        assert_eq!(normalize_source_lang(Some("pt-BR")), "pt");
+        assert_eq!(normalize_source_lang(Some("es")), "es");
+        assert_eq!(normalize_source_lang(Some("ja")), "ja");
+    }
+
+    #[test]
     fn test_url_encode() {
         assert_eq!(url_encode("Hello World"), "Hello%20World");
         assert_eq!(url_encode("foo_bar-1.2~"), "foo_bar-1.2~");
@@ -400,7 +466,7 @@ mod tests {
     #[test]
     fn test_translate_empty_boxes() {
         tauri::async_runtime::block_on(async {
-            let result = translate_on_screen(vec![], None).await;
+            let result = translate_on_screen(vec![], None, None).await;
             assert!(result.is_ok());
             assert_eq!(result.unwrap(), vec![]);
         });

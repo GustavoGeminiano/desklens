@@ -1037,7 +1037,7 @@ pub fn run() {
 
             let tray_menu = Menu::with_items(app, &[&capture_item, &settings_item, &quit_item])?;
 
-            let mut tray_builder = TrayIconBuilder::new()
+            let tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .tooltip("DeskLens — Google Lens for Desktop")
                 .show_menu_on_left_click(true)
@@ -1064,11 +1064,15 @@ pub fn run() {
                     _ => {}
                 });
 
-            if let Some(default_icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(default_icon.clone());
-            }
+            let tray_icon = app.default_window_icon().cloned().unwrap_or_else(|| {
+                let raw_bytes = include_bytes!("../icons/128x128.png");
+                let img = image::load_from_memory(raw_bytes).expect("Valid 128x128 tray icon asset");
+                let rgba = img.to_rgba8();
+                let (w, h) = (rgba.width(), rgba.height());
+                tauri::image::Image::new_owned(rgba.into_raw(), w, h)
+            });
 
-            let _tray = tray_builder.build(app)?;
+            let _tray = tray_builder.icon(tray_icon).build(app)?;
 
             // =========================================================================
             // GLOBAL HOTKEY: Ctrl + Shift + X (Capture & Overlay)
