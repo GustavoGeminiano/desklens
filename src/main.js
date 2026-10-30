@@ -636,11 +636,23 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function getStoredTargetLang() {
+  function getSystemLanguage() {
     try {
-      return localStorage.getItem(STORAGE_KEY_TARGET_LANG) || "pt";
+      const code = (navigator.language || navigator.languages?.[0] || "pt")
+        .split("-")[0]
+        .toLowerCase();
+      const supported = ["pt", "en", "es", "fr", "de", "ja", "zh", "it", "ru", "ko"];
+      return supported.includes(code) ? code : "pt";
     } catch (_) {
       return "pt";
+    }
+  }
+
+  function getStoredTargetLang() {
+    try {
+      return localStorage.getItem(STORAGE_KEY_TARGET_LANG) || getSystemLanguage();
+    } catch (_) {
+      return getSystemLanguage();
     }
   }
 
@@ -684,15 +696,22 @@ window.addEventListener("DOMContentLoaded", async () => {
   // =========================================================================
   // Translate Action Button Handler (Requirement R3)
   // =========================================================================
-  async function triggerTranslation() {
-    if (!translateActionBtn) return;
-    const originalHtml = translateActionBtn.innerHTML;
-    translateActionBtn.innerHTML = "<span>⏳</span> Translating...";
+  let isTranslating = false;
 
+  async function triggerTranslation() {
+    if (!translateActionBtn || isTranslating) return;
+    isTranslating = true;
+
+    // Reveal language selectors and adapt toolbar position
     if (langSelectorGroup) {
       langSelectorGroup.classList.remove("hidden");
-      repositionCropActions();
+      if (typeof positionActionToolbar === "function") {
+        positionActionToolbar();
+      }
     }
+
+    const defaultButtonHtml = "<span>🌐</span> Translate";
+    translateActionBtn.innerHTML = "<span>⏳</span> Translating...";
 
     try {
       if (!currentCropDataUrl) {
@@ -737,12 +756,12 @@ window.addEventListener("DOMContentLoaded", async () => {
         if (flatBoxes.length === 0) {
           translateActionBtn.innerHTML = "<span>⚠️</span> No text found";
           setTimeout(() => {
-            translateActionBtn.innerHTML = originalHtml;
+            translateActionBtn.innerHTML = defaultButtonHtml;
           }, 1800);
           return;
         }
 
-        const selectedTargetLang = targetLangSelect ? targetLangSelect.value : "pt";
+        const selectedTargetLang = targetLangSelect ? targetLangSelect.value : getStoredTargetLang();
         const selectedSourceLang = sourceLangSelect ? sourceLangSelect.value : "auto";
 
         // 2. Invoke translation command
@@ -759,7 +778,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         const tempImg = new Image();
         tempImg.onload = () => {
           if (rectSnapshot.w <= 0 || rectSnapshot.h <= 0) {
-            translateActionBtn.innerHTML = originalHtml;
+            translateActionBtn.innerHTML = defaultButtonHtml;
             return;
           }
           const realW = tempImg.naturalWidth || rectSnapshot.w;
@@ -783,7 +802,6 @@ window.addEventListener("DOMContentLoaded", async () => {
               if (i === j) continue;
               const b2 = mappedBoxes[j];
               if (b2.width <= 0 || b2.height <= 0) continue;
-              // If b2 starts inside b1's vertical span and b2 is at or below b1
               if (b2.y >= b1.y && b2.y < b1.y + b1.height) {
                 const hOverlap = Math.max(0, Math.min(b1.x + b1.width, b2.x + b2.width) - Math.max(b1.x, b2.x));
                 const minW = Math.min(b1.width, b2.width);
@@ -813,12 +831,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 
           translateActionBtn.innerHTML = "<span>✅</span> Translated!";
           setTimeout(() => {
-            translateActionBtn.innerHTML = originalHtml;
+            translateActionBtn.innerHTML = defaultButtonHtml;
           }, 2000);
         };
         tempImg.onerror = (err) => {
           console.error("Failed to decode cropped image for translation overlays:", err);
-          translateActionBtn.innerHTML = originalHtml;
+          translateActionBtn.innerHTML = defaultButtonHtml;
         };
         tempImg.src = currentCropDataUrl;
       }
@@ -826,8 +844,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       console.error("Failed to translate on screen:", err);
       translateActionBtn.innerHTML = "<span>⚠️</span> Error";
       setTimeout(() => {
-        translateActionBtn.innerHTML = originalHtml;
+        translateActionBtn.innerHTML = defaultButtonHtml;
       }, 1800);
+    } finally {
+      isTranslating = false;
     }
   }
 
