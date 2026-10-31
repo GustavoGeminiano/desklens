@@ -19,7 +19,52 @@ if [ "$1" = "--trigger" ] || [ "$1" = "-t" ] || [ "$1" = "trigger" ]; then
   fi
 fi
 
-# 2. Auto-configure GNOME global shortcut Ctrl+Shift+X if on GNOME
+# 2. Autostart and Desktop menu entry management
+if [ "$1" = "--autostart" ] || [ "$1" = "--install" ] || [ "$1" = "-i" ]; then
+  echo "📦 [DeskLens] Installing Desktop menu entry and Autostart on boot..."
+  mkdir -p "$HOME/.local/share/applications" "$HOME/.config/autostart" "$HOME/.local/share/icons/hicolor/128x128/apps" "$HOME/.local/share/icons/hicolor/256x256/apps"
+  cp "$SCRIPT_DIR/src-tauri/icons/128x128.png" "$HOME/.local/share/icons/hicolor/128x128/apps/desklens.png" 2>/dev/null || true
+  cp "$SCRIPT_DIR/src-tauri/icons/128x128@2x.png" "$HOME/.local/share/icons/hicolor/256x256/apps/desklens.png" 2>/dev/null || true
+
+  DESKTOP_FILE="$HOME/.local/share/applications/desklens.desktop"
+  AUTOSTART_FILE="$HOME/.config/autostart/desklens.desktop"
+
+  cat << EOF > "$DESKTOP_FILE"
+[Desktop Entry]
+Type=Application
+Name=DeskLens
+Comment=Google Lens for Desktop - Visual Search & On-Screen Translation
+Exec=$SCRIPT_DIR/run-linux.sh
+Icon=desklens
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+  chmod +x "$DESKTOP_FILE"
+  cp "$DESKTOP_FILE" "$AUTOSTART_FILE"
+  chmod +x "$AUTOSTART_FILE"
+
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+  fi
+
+  echo "✅ [DeskLens] Installed successfully!"
+  echo "   • Menu: DeskLens is now available in your Applications menu."
+  echo "   • Autostart: DeskLens will start automatically on login."
+  exit 0
+fi
+
+if [ "$1" = "--remove-autostart" ] || [ "$1" = "--uninstall" ] || [ "$1" = "-u" ]; then
+  echo "🗑️ [DeskLens] Removing Autostart and Desktop menu entry..."
+  rm -f "$HOME/.config/autostart/desklens.desktop"
+  rm -f "$HOME/.local/share/applications/desklens.desktop"
+  echo "✅ [DeskLens] Autostart disabled and menu entry removed."
+  exit 0
+fi
+
+# 3. Auto-configure GNOME global shortcut Ctrl+Shift+X if on GNOME
 if [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then
   python3 - << 'EOF' 2>/dev/null || true
 import subprocess
@@ -59,5 +104,17 @@ echo "   • GDK_BACKEND=${GDK_BACKEND}"
 echo "   • WEBKIT_DISABLE_COMPOSITING_MODE=${WEBKIT_DISABLE_COMPOSITING_MODE}"
 echo "   • NO_AT_BRIDGE=${NO_AT_BRIDGE}"
 
-echo "🚀 [DeskLens] Launching application in development mode..."
-exec npm run tauri dev "$@"
+if [ "$1" = "--dev" ]; then
+  echo "🚀 [DeskLens] Launching in development mode with live reload..."
+  shift
+  exec npm run tauri dev "$@"
+elif [ -x "$SCRIPT_DIR/src-tauri/target/release/desklens" ]; then
+  echo "🚀 [DeskLens] Launching optimized release binary..."
+  exec "$SCRIPT_DIR/src-tauri/target/release/desklens" "$@"
+elif [ -x "$SCRIPT_DIR/src-tauri/target/debug/desklens" ]; then
+  echo "🚀 [DeskLens] Launching debug binary..."
+  exec "$SCRIPT_DIR/src-tauri/target/debug/desklens" "$@"
+else
+  echo "🚀 [DeskLens] Launching application in development mode..."
+  exec npm run tauri dev "$@"
+fi
