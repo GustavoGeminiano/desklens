@@ -344,6 +344,7 @@ html, body {
 }
 
 .preview-chip {
+  display: none !important;
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -567,9 +568,8 @@ button:active {
   text-align: center;
   line-height: 1.15;
   white-space: normal;
-  word-break: break-word;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: normal;
+  overflow: visible;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
   z-index: 25;
   pointer-events: auto;

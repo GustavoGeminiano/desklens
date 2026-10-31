@@ -258,6 +258,20 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
 pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String> {
     use std::process::Command;
 
+    let (w, h) = (image.width(), image.height());
+    // On desktop screens, text is rendered at ~96 DPI (often only 8-16px per character).
+    // Tesseract neural models expect ~300 DPI text (30-60px per character).
+    // Upscaling by 2x with Lanczos interpolation and passing --dpi 150
+    // yields a massive increase in OCR recall and accuracy.
+    let scale: f64 = if w < 1600 && h < 1600 { 2.0 } else { 1.0 };
+    let temp_image = if scale > 1.0 {
+        let new_w = (w as f64 * scale).round() as u32;
+        let new_h = (h as f64 * scale).round() as u32;
+        image::imageops::resize(image, new_w, new_h, image::imageops::FilterType::Lanczos3)
+    } else {
+        image.clone()
+    };
+
     // Save temporary PNG for tesseract
     let temp_dir = std::env::temp_dir();
     let temp_image_path = temp_dir.join(format!(
@@ -268,20 +282,20 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
             .unwrap_or(0)
     ));
 
-    image
+    temp_image
         .save_with_format(&temp_image_path, image::ImageFormat::Png)
         .map_err(|e| format!("Failed to write temporary image for OCR: {e}"))?;
 
     let temp_path_str = temp_image_path.to_string_lossy().to_string();
 
-    // Check tesseract with multi-language (por+eng) or fallback to default
+    // Check tesseract with multi-language (por+eng), --dpi 150, or fallback to default
     let output = match Command::new("tesseract")
-        .args([&temp_path_str, "stdout", "-l", "por+eng", "tsv"])
+        .args([&temp_path_str, "stdout", "--dpi", "150", "-l", "por+eng", "tsv"])
         .output()
     {
         Ok(out) if out.status.success() => out,
         _ => Command::new("tesseract")
-            .args([&temp_path_str, "stdout", "tsv"])
+            .args([&temp_path_str, "stdout", "--dpi", "150", "tsv"])
             .output()
             .map_err(|e| {
                 let _ = std::fs::remove_file(&temp_image_path);
@@ -301,7 +315,32 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
     }
 
     let tsv_text = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_tesseract_tsv(&tsv_text))
+    let mut result = parse_tesseract_tsv(&tsv_text);
+
+    // If image was upscaled, map coordinates back to original unscaled screen pixels
+    if scale != 1.0 {
+        let inv_scale = 1.0 / scale;
+        for line in &mut result.lines {
+            line.x *= inv_scale;
+            line.y *= inv_scale;
+            line.width *= inv_scale;
+            line.height *= inv_scale;
+            for word in &mut line.words {
+                word.x *= inv_scale;
+                word.y *= inv_scale;
+                word.width *= inv_scale;
+                word.height *= inv_scale;
+            }
+        }
+        for bbox in &mut result.boxes {
+            bbox.x *= inv_scale;
+            bbox.y *= inv_scale;
+            bbox.width *= inv_scale;
+            bbox.height *= inv_scale;
+        }
+    }
+
+    Ok(result)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
