@@ -346,10 +346,15 @@ async fn crop_selection(
             1.0
         };
 
-        let real_x = ((x as f64) * scale_x).round() as u32;
-        let real_y = ((y as f64) * scale_y).round() as u32;
-        let real_w = ((width as f64) * scale_x).round() as u32;
-        let real_h = ((height as f64) * scale_y).round() as u32;
+        let safe_x = (x as f64).max(0.0);
+        let safe_y = (y as f64).max(0.0);
+        let safe_w = (width as f64).max(0.0);
+        let safe_h = (height as f64).max(0.0);
+
+        let real_x = (safe_x * scale_x).round() as u32;
+        let real_y = (safe_y * scale_y).round() as u32;
+        let real_w = (safe_w * scale_x).round() as u32;
+        let real_h = (safe_h * scale_y).round() as u32;
 
         if real_x >= img_w || real_y >= img_h || real_w == 0 || real_h == 0 {
             return Err("Invalid selection dimensions".to_string());
@@ -868,7 +873,9 @@ async fn copy_text_from_crop(state: tauri::State<'_, AppState>) -> Result<String
         .ok_or_else(|| "No cropped image available for OCR".to_string())?;
 
     let result = ocr::extract_text_native(image)?;
-    let text = result.full_text.trim().to_string();
+    // Trim leading/trailing blank lines, but preserve leading indentation on lines
+    let trimmed = result.full_text.trim_matches(|c| c == '\r' || c == '\n');
+    let text = trimmed.trim_end().to_string();
 
     if !text.is_empty() {
         copy_plain_text_to_clipboard(&text)?;

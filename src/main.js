@@ -138,22 +138,192 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   window.copyTextToClipboard = copyTextToClipboard;
 
-  // Joins a slice of pill items: words on the same line with spaces, different lines with newlines
+  // Joins a slice of pill items: words on the same line with gaps/spacing, different lines with relative indentation, blank lines and newlines
   function joinPillItems(items) {
-    let out = "";
-    let lastLine = null;
+    if (!items || items.length === 0) return "";
+    if (items.length === 1) return items[0].text || "";
+
+    // Estimate character width from selected items
+    let totalW = 0;
+    let totalChars = 0;
     for (const it of items) {
-      if (lastLine === null) {
-        out = it.text;
-      } else if (it.lineIndex === lastLine) {
-        out += " " + it.text;
-      } else {
-        out += "\n" + it.text;
+      if (it.text && it.text.length >= 2 && typeof it.width === "number") {
+        totalW += it.width;
+        totalChars += it.text.length;
       }
-      lastLine = it.lineIndex;
     }
-    return out.trim();
+    if (totalChars === 0) {
+      for (const it of items) {
+        if (it.text && it.text.length >= 1 && typeof it.width === "number" && it.width > 0) {
+          totalW += it.width;
+          totalChars += it.text.length;
+        }
+      }
+    }
+    const charW = totalChars > 0 ? Math.max(4, totalW / totalChars) : 8;
+
+    // Group items by lineIndex
+    const linesMap = new Map();
+    for (const it of items) {
+      if (!it) continue;
+      const lIdx = it.lineIndex ?? 0;
+      if (!linesMap.has(lIdx)) {
+        linesMap.set(lIdx, []);
+      }
+      linesMap.get(lIdx).push(it);
+    }
+
+    // Sort lines stably by lineIndex and vertical coordinate
+    const sortedLineEntries = Array.from(linesMap.entries()).sort((a, b) => {
+      if (a[0] !== b[0]) return a[0] - b[0];
+      const yA = a[1][0]?.y ?? 0;
+      const yB = b[1][0]?.y ?? 0;
+      return yA - yB;
+    });
+
+    // Determine base left coordinate among lines starting at line margin (wordIndex === 0)
+    let minX = Infinity;
+    for (const [, lineItems] of sortedLineEntries) {
+      if (lineItems.length > 0 && typeof lineItems[0].x === "number") {
+        if (lineItems[0].wordIndex === 0) {
+          minX = Math.min(minX, lineItems[0].x);
+        }
+      }
+    }
+    if (!isFinite(minX)) {
+      minX = sortedLineEntries[0]?.[1]?.[0]?.x ?? 0;
+    }
+
+    // Detect indentation unit grid (2-space vs 4-space tab steps)
+    const nonZeroIndents = [];
+    for (const [, lineItems] of sortedLineEntries) {
+      if (lineItems.length > 0 && lineItems[0].wordIndex === 0 && typeof lineItems[0].x === "number") {
+        const px = lineItems[0].x - minX;
+        if (px >= charW * 0.55) {
+          nonZeroIndents.push(px);
+        }
+      }
+    }
+    nonZeroIndents.sort((a, b) => a - b);
+
+    let unitPx = charW;
+    let unitSpaces = 1;
+    if (nonZeroIndents.length > 0) {
+      const minPx = nonZeroIndents[0];
+      const estChars = minPx / charW;
+      if (estChars >= 1.4 && estChars <= 2.8) {
+        unitPx = minPx;
+        unitSpaces = 2;
+      } else if (estChars >= 3.2 && estChars <= 5.0) {
+        unitPx = minPx;
+        unitSpaces = 4;
+      } else if (estChars > 5.0 && Math.abs(estChars / 4.0 - Math.round(estChars / 4.0)) <= 0.25) {
+        const mult = Math.max(1, Math.round(estChars / 4.0));
+        unitPx = minPx / mult;
+        unitSpaces = 4;
+      } else if (estChars > 3.0 && Math.abs(estChars / 2.0 - Math.round(estChars / 2.0)) <= 0.25) {
+        const mult = Math.max(1, Math.round(estChars / 2.0));
+        unitPx = minPx / mult;
+        unitSpaces = 2;
+      }
+    }
+
+    // Estimate line height and line pitch matching ocr.rs
+    const heights = [];
+    for (const [, lineItems] of sortedLineEntries) {
+      if (typeof lineItems[0]?.height === "number" && lineItems[0].height > 0) {
+        heights.push(lineItems[0].height);
+      }
+    }
+    heights.sort((a, b) => a - b);
+    const medianLineH = heights.length > 0 ? Math.max(8, heights[Math.floor(heights.length / 2)]) : 18;
+
+    const pitches = [];
+    for (let idx = 1; idx < sortedLineEntries.length; idx++) {
+      const prevY = sortedLineEntries[idx - 1][1][0]?.y;
+      const currY = sortedLineEntries[idx][1][0]?.y;
+      if (typeof prevY === "number" && typeof currY === "number") {
+        const diff = currY - prevY;
+        if (diff > medianLineH * 0.8 && diff < medianLineH * 2.5) {
+          pitches.push(diff);
+        }
+      }
+    }
+    pitches.sort((a, b) => a - b);
+    const medianPitch = pitches.length > 0 ? pitches[Math.floor(pitches.length / 2)] : medianLineH * 1.3;
+
+    const outLines = [];
+    let prevLineY = null;
+
+    for (let lineSeq = 0; lineSeq < sortedLineEntries.length; lineSeq++) {
+      const [, lineItems] = sortedLineEntries[lineSeq];
+      if (lineItems.length === 0) continue;
+
+      // Preserve blank lines between lines in selection
+      const currY = lineItems[0].y;
+      if (typeof prevLineY === "number" && typeof currY === "number") {
+        const yDiff = currY - prevLineY;
+        if (yDiff >= medianPitch * 1.6) {
+          const extraLines = Math.min(3, Math.max(0, Math.round(yDiff / medianPitch) - 1));
+          for (let k = 0; k < extraLines; k++) {
+            outLines.push("");
+          }
+        }
+      }
+      prevLineY = currY;
+
+      // Sort words by x coordinate
+      lineItems.sort((a, b) => (a.x || 0) - (b.x || 0));
+
+      let lineStr = "";
+      const first = lineItems[0];
+      const leadingWs = first.lineText ? (first.lineText.match(/^(\s+)/)?.[1] || "") : "";
+
+      if (first.wordIndex === 0 && leadingWs) {
+        // Selection starts at the beginning of this line; preserve exact original line indentation
+        lineStr += leadingWs;
+      } else if (first.wordIndex === 0 && typeof first.x === "number") {
+        // Line starting at wordIndex 0 without lineText: compute grid-snapped or character indentation relative to minX
+        const indentPx = Math.max(0, first.x - minX);
+        if (indentPx >= charW * 0.55) {
+          if (unitSpaces > 1 && unitPx > 0) {
+            const estUnits = indentPx / unitPx;
+            const nearest = Math.round(estUnits);
+            if (Math.abs(estUnits - nearest) <= 0.28) {
+              lineStr += " ".repeat(Math.max(1, nearest) * unitSpaces);
+            } else {
+              lineStr += " ".repeat(Math.round(indentPx / charW));
+            }
+          } else {
+            lineStr += " ".repeat(Math.round(indentPx / charW));
+          }
+        }
+      }
+
+      for (let i = 0; i < lineItems.length; i++) {
+        const word = lineItems[i];
+        if (i === 0) {
+          lineStr += word.text;
+        } else {
+          const prev = lineItems[i - 1];
+          const prevEnd = (prev.x || 0) + (prev.width || 0);
+          const gap = Math.max(0, (word.x || 0) - prevEnd);
+          if (gap < charW * 0.35) {
+            lineStr += word.text;
+          } else if (gap >= charW * 1.75) {
+            const spaces = Math.min(8, Math.max(2, Math.round(gap / charW)));
+            lineStr += " ".repeat(spaces) + word.text;
+          } else {
+            lineStr += " " + word.text;
+          }
+        }
+      }
+      outLines.push(lineStr);
+    }
+
+    return outLines.join("\n");
   }
+  window.joinPillItems = joinPillItems;
 
   function flashOcrButton(html) {
     if (!ocrActionBtn) return;
@@ -166,7 +336,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Builds interactive, copyable pills inside the crop box.
-  // items: [{ text, x, y, width, height, lineIndex }] in crop-box CSS pixels.
+  // items: [{ text, x, y, width, height, lineIndex, lineText }] in crop-box CSS pixels.
   // Click = copy item • Drag across items = copy phrase • Double-click = copy whole line.
   function renderInteractivePills(items, { translated = false } = {}) {
     if (!cropTextHighlights) return;
@@ -179,10 +349,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       pill.className = translated ? "crop-word-highlight translated" : "crop-word-highlight";
       pill.dataset.index = String(flatItems.length);
       pill.dataset.line = String(item.lineIndex ?? idx);
-      pill.style.left = `${Math.round(item.x)}px`;
-      pill.style.top = `${Math.round(item.y)}px`;
-      pill.style.width = `${Math.round(item.width)}px`;
-      pill.style.height = `${Math.round(item.height)}px`;
+
+      const pad = 1;
+      const pillLeft = Math.max(0, Math.round(item.x) - pad);
+      const pillTop = Math.max(0, Math.round(item.y) - pad);
+      const pillWidth = Math.round(item.width) + pad * 2;
+      const pillHeight = Math.round(item.height) + pad * 2;
+
+      pill.style.left = `${pillLeft}px`;
+      pill.style.top = `${pillTop}px`;
+      pill.style.width = `${pillWidth}px`;
+      pill.style.height = `${pillHeight}px`;
 
       if (translated) {
         pill.textContent = item.text;
@@ -202,7 +379,18 @@ window.addEventListener("DOMContentLoaded", async () => {
         ? `Tradução: "${item.text}" • Clique para copiar • Arraste para copiar várias linhas`
         : `Drag to select phrase • Double-click for full line • Click for word: "${item.text}"`;
 
-      const pillObj = { index: flatItems.length, lineIndex: item.lineIndex ?? idx, text: item.text, pill };
+      const pillObj = {
+        index: flatItems.length,
+        lineIndex: item.lineIndex ?? idx,
+        wordIndex: item.wordIndex ?? 0,
+        text: item.text,
+        lineText: item.lineText,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        pill,
+      };
       flatItems.push(pillObj);
 
       // 1. Click / drag across pills to copy a word or phrase
@@ -256,14 +444,14 @@ window.addEventListener("DOMContentLoaded", async () => {
         window.addEventListener("mouseup", onUp);
       });
 
-      // 2. Double click copies the whole line/sentence
+      // 2. Double click copies the whole line/sentence with indentation preserved
       pill.addEventListener("dblclick", async (e) => {
         e.stopPropagation();
-        const lineItems = flatItems.filter((w) => w.lineIndex === pillObj.lineIndex);
-        const lineSentence = joinPillItems(lineItems);
+        const lineSentence = pillObj.lineText || joinPillItems(flatItems.filter((w) => w.lineIndex === pillObj.lineIndex));
         if (!lineSentence) return;
         const ok = await copyTextToClipboard(lineSentence);
         if (ok) {
+          const lineItems = flatItems.filter((w) => w.lineIndex === pillObj.lineIndex);
           lineItems.forEach((w) => {
             w.pill.classList.add("copied");
             setTimeout(() => w.pill.classList.remove("copied"), 900);
@@ -275,6 +463,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       cropTextHighlights.appendChild(pill);
     });
   }
+  window.renderInteractivePills = renderInteractivePills;
 
   // Render interactive word highlights directly over text in selection box (Sprint 4)
   function renderTextHighlights(ocrResult, cropW, cropH) {
@@ -292,7 +481,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
       const items = [];
       ocrResult.lines.forEach((line, lineIdx) => {
-        (line.words || []).forEach((word) => {
+        (line.words || []).forEach((word, wordIdx) => {
           if (!word.text || !word.width || !word.height) return;
           items.push({
             text: word.text,
@@ -301,6 +490,8 @@ window.addEventListener("DOMContentLoaded", async () => {
             width: word.width * scaleX,
             height: word.height * scaleY,
             lineIndex: lineIdx,
+            wordIndex: wordIdx,
+            lineText: line.text,
           });
         });
       });
