@@ -3,12 +3,12 @@
 # 🔎 DeskLens
 
 **The power of Google Lens, natively on your Desktop.**  
-*Lightweight background engine, instant OCR, and visual search for Windows and Linux.*
+*Lightweight background engine, instant OCR, on-screen translation, and visual search for Windows & Linux.*
 
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-2021-DEA584?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-brightgreen?style=for-the-badge)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
 </div>
 
@@ -16,64 +16,96 @@
 
 ## 💡 About DeskLens
 
-**DeskLens** is an ultra-lightweight desktop utility designed to run silently in the background, consuming minimal system resources (~20 MB RAM). With a simple global keyboard shortcut, DeskLens freezes the current screen and transforms any visible area into selectable text or an instant visual search on Google Lens — directly inside an integrated app window, without cluttering your browser with extra tabs.
+**DeskLens** is an open-source, ultra-lightweight desktop utility (~20 MB RAM) that brings the Google Lens mobile experience to Windows and Linux. 
+
+With a single global keyboard shortcut, DeskLens freezes your screen and lets you select any region to:
+1. **Search visually** on Google Lens in your browser with zero latency.
+2. **Translate text on-screen** directly over the image, in any language pair, without covering or obscuring your view.
+3. **Copy text from anywhere** (images, video streams, protected documents, game interfaces) with interactive word-level and line-level selection.
 
 ---
 
-## ✨ Features
+## ✨ Key Features
 
-* 🚀 **Invisible Engine & System Tray:** Runs silently in the system tray without taking up space on your main taskbar.
-* ⌨️ **Global Shortcut:** Instantly invoked from anywhere via global hotkey (`Ctrl + Shift + X`).
-* 📸 **Smart Screen Freezing:** Captures your active display with an intuitive overlay without interrupting your workflow.
-* ✂️ **Dynamic Cropping:** Drag-and-drop selection handles to focus on any image, code snippet, or UI element.
-* 🔍 **Embedded Visual Search:** Reverse image search powered by Google Lens inside a native WebView panel.
-* 📝 **OCR & Text Extraction:** Optical character recognition directly extracts text from images or video frames straight into your clipboard.
+* 🚀 **Invisible Background Engine:** Sits quietly in your system tray near the clock without cluttering your taskbar.
+* ⌨️ **Global Shortcut (`Ctrl + Shift + X`):** Instantly trigger screen capture from any application, game, or desktop environment.
+* 📸 **Smart Screen Freezing:** Captures your active display instantly with smooth dimming, keeping your workflow uninterrupted.
+* ✂️ **Precision Selection & Cropping:** Drag-to-select with interactive edge handles and live dimension feedback.
+* 🔍 **Instant Google Lens Visual Search:** One-click image upload pipeline that opens full visual search in your default browser with immediate focus.
+* 🌐 **On-Screen Multilingual Translation:**
+  * Translates text directly over the original image with clean bounding boxes.
+  * **Auto-detection** on the source language and automatic detection of your operating system's language on the target.
+  * Switch between English, Portuguese, Spanish, French, German, Japanese, Chinese, Italian, Russian, Korean, and more.
+  * Anti-collision layout algorithm prevents translated lines from overlapping each other.
+  * Click any translated box to copy that phrase, or copy the entire translation at once.
+* 📝 **High-Accuracy Native OCR Engine:**
+  * **Windows:** Powered by the built-in Microsoft WinRT OCR engine (`Windows.Media.Ocr`) with zero external dependencies.
+  * **Linux:** Powered by Tesseract OCR with 2x Lanczos super-resolution preprocessing to detect even tiny on-screen fonts.
+  * **Interactive Word Highlighting:** Click a word to copy it, drag across words to select phrases, or double-click to copy an entire line.
+
+---
+
+## 📥 Download & Installation
+
+Pre-compiled, ready-to-use binaries are available on the [**GitHub Releases**](https://github.com/GustavoGeminiano/desklens/releases) page.
+
+### 🪟 Windows (Windows 10 / 11)
+Download the latest `.exe` (NSIS Installer) or `.msi` package from [Releases](https://github.com/GustavoGeminiano/desklens/releases).  
+Double-click the installer and launch DeskLens. It will run in your system tray with full native OCR out of the box.
+
+### 🐧 Linux (Ubuntu, Debian, Fedora, Arch, Mint, etc.)
+* **AppImage (Universal Portable):**
+  ```bash
+  chmod +x DeskLens_*.AppImage
+  ./DeskLens_*.AppImage
+  ```
+* **DEB Package (Ubuntu / Debian):**
+  ```bash
+  sudo dpkg -i desklens_*_amd64.deb
+  ```
+
+> **Linux OCR Requirement:** On Linux, text recognition uses Tesseract. If you haven't installed language packs yet, run:
+> ```bash
+> sudo apt install tesseract-ocr tesseract-ocr-por tesseract-ocr-eng wl-clipboard
+> ```
+
+---
+
+## ⌨️ Shortcuts & Controls
+
+| Action | Control |
+| :--- | :--- |
+| **Trigger DeskLens** | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> |
+| **Select Region** | Click & drag mouse |
+| **Adjust Selection** | Drag selection border handles |
+| **Search on Google Lens** | Click **Search Image** |
+| **Translate on Screen** | Click **Translate** |
+| **Switch Languages** | Choose source / target in the language bar |
+| **Copy Translated Text** | Click any translated box or **Copy Translation** |
+| **Copy Word / Phrase** | Click a word pill or drag across words |
+| **Copy Full Line** | Double-click on any word pill |
+| **Exit Overlay / Clear** | <kbd>Esc</kbd> or click **Clear** / **✕** |
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Core & Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) (high performance, memory safety, minimal footprint).
-* **Interface (Frontend):** Modern HTML5, CSS3, and Vanilla JavaScript (rendered via native system WebView2).
-* **System Integration:** Official Tauri v2 plugins (`tray-icon` and `global-shortcut`).
+* **Core & Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) (high performance, memory safety, tiny binary footprint).
+* **Display Server & Capture:** `xcap` crate (multi-monitor Wayland & X11 capture, Windows desktop capture).
+* **Frontend:** Vanilla JavaScript, Modern CSS3, HTML5 (rendered via WebKitGTK on Linux and WebView2 on Windows).
+* **OCR Engines:**
+  * Windows: `Windows.Media.Ocr` (built-in Windows runtime).
+  * Linux: `tesseract-ocr` with automated 2x super-resolution scaling.
+* **Continuous Integration:** GitHub Actions automated cross-platform build matrix.
 
 ---
 
-## 🗺️ Implementation Roadmap
-
-- [x] **Sprint 0: Foundation & Invisible Engine**
-  - [x] Tauri v2 setup (Rust + Vanilla JS).
-  - [x] Window hidden from main taskbar on startup (`skipTaskbar`).
-  - [x] Native System Tray menu (*Settings* and *Quit*).
-  - [x] Global system hotkey registration (`Ctrl + Shift + X`).
-- [x] **Sprint 1: Screen Capture & Overlay**
-  - [x] Fullscreen screen capture upon hotkey trigger (`xcap` crate).
-  - [x] Frameless, always-on-top overlay display.
-  - [x] Frozen frame canvas with visual border cues.
-  - [x] Smooth dismiss on <kbd>ESC</kbd> or close button.
-- [x] **Sprint 2: Selection & Cropping Tool**
-  - [x] Mouse selection handlers with dimmed outer mask.
-  - [x] Bounding box coordinates dispatched to Rust backend (`crop_selection`).
-  - [x] Edge handles to resize/drag selection borders.
-  - [x] Floating action bar with instant cropped thumbnail preview.
-- [x] **Sprint 3: Integrated Visual Search**
-  - [x] Dedicated side-panel WebView window (`results.html`).
-  - [x] Image slice payload dispatched with live dimensions.
-  - [x] Search provider hub (Google Lens, Google Images, Bing Visual).
-  - [x] One-click image clipboard copy and local export.
-- [ ] **Sprint 4: OCR & Text Extraction**
-  - [ ] Optical character recognition engine integration.
-  - [ ] Automatic system clipboard copy.
-
----
-
-## 🚀 Getting Started
+## 💻 Running from Source
 
 ### Prerequisites
 * [Node.js](https://nodejs.org/) (v18+)
 * [Rust](https://www.rust-lang.org/tools/install) (v1.78+)
-* **Windows:** Visual Studio 2022 C++ Build Tools (with *"Desktop development with C++"* workload)
-* **Linux (Ubuntu / Debian):**
+* **Linux Build Dependencies (Ubuntu / Debian):**
   ```bash
   sudo apt update
   sudo apt install -y \
@@ -97,35 +129,34 @@
     xclip
   ```
 
-  > **Note for Wayland Users:** On Wayland desktop environments (such as Ubuntu GNOME), global keyboard shortcut capture (`Ctrl+Shift+X`) requires Xwayland compatibility. Launch the application using `./run-linux.sh` (which configures `GDK_BACKEND=x11` and `WEBKIT_DISABLE_COMPOSITING_MODE=1`) or configure a custom system shortcut in **GNOME Settings → Keyboard → Keyboard Shortcuts**.
-
-### Installation & Run
+### Build & Run
 
 1. Clone the repository:
-```bash
-git clone https://github.com/GustavoGeminiano/desklens.git
-cd desklens
-```
+   ```bash
+   git clone https://github.com/GustavoGeminiano/desklens.git
+   cd desklens
+   ```
 
 2. Install dependencies:
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
 3. Run in development mode:
-- **On Linux (Recommended):**
-  ```bash
-  ./run-linux.sh
-  ```
-- **Standard / Windows:**
-  ```bash
-  npm run tauri dev
-  ```
+   * **Linux:**
+     ```bash
+     ./run-linux.sh
+     ```
+   * **Windows:**
+     ```bash
+     npm run tauri dev
+     ```
 
-4. **Testing the application:**
-   * The app will start silently in your system tray (near the clock).
-   * Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> anywhere to test the global hotkey trigger.
-   * Right-click the tray icon to open *Settings* or *Quit*.
+4. Build production installer packages locally:
+   ```bash
+   npm run tauri build
+   ```
+   Installers will be generated under `src-tauri/target/release/bundle/`.
 
 ---
 
@@ -133,8 +164,6 @@ npm install
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 
----
-
 <div align="center">
-Developed by <strong>Gustavo Geminiano</strong>
+Developed with ❤️ by <strong>Gustavo Geminiano</strong>
 </div>
