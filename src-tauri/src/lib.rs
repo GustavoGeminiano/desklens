@@ -286,6 +286,9 @@ async fn hide_overlay(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
         let _ = window.set_always_on_top(false);
         let _ = window.set_fullscreen(false);
+        let _ = window.set_decorations(true);
+        let _ = window.set_size(tauri::LogicalSize::new(520.0, 400.0));
+        let _ = window.center();
         let _ = window.hide();
     }
     Ok(())
@@ -617,6 +620,9 @@ async fn search_google_lens(
     if let Some(window) = app_handle.get_webview_window("main") {
         let _ = window.set_always_on_top(false);
         let _ = window.set_fullscreen(false);
+        let _ = window.set_decorations(true);
+        let _ = window.set_size(tauri::LogicalSize::new(520.0, 400.0));
+        let _ = window.center();
         let _ = window.hide();
     }
     let _ = app_handle.emit("view-mode", "settings");
@@ -941,6 +947,7 @@ fn capture_and_display_overlay(app_handle: &tauri::AppHandle) {
                     let _ = app_handle.emit("view-mode", "overlay");
 
                     // 3. Show window first so GTK realizes it properly before entering fullscreen
+                    let _ = window.set_decorations(false);
                     let _ = window.show();
                     let _ = window.set_fullscreen(true);
                     let _ = window.set_always_on_top(true);
@@ -1050,7 +1057,8 @@ pub fn run() {
                         println!("⚙️ [DeskLens] Opening Settings window...");
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.set_fullscreen(false);
-                            let _ = window.set_size(tauri::LogicalSize::new(520.0, 380.0));
+                            let _ = window.set_decorations(true);
+                            let _ = window.set_size(tauri::LogicalSize::new(520.0, 400.0));
                             let _ = window.center();
                             let _ = app.emit("view-mode", "settings");
                             let _ = window.show();
@@ -1065,8 +1073,12 @@ pub fn run() {
                 });
 
             let tray_icon = {
+                #[cfg(target_os = "windows")]
+                let raw_bytes = include_bytes!("../icons/32x32.png");
+                #[cfg(not(target_os = "windows"))]
                 let raw_bytes = include_bytes!("../icons/128x128.png");
-                let img = image::load_from_memory(raw_bytes).expect("Valid 128x128 tray icon asset");
+
+                let img = image::load_from_memory(raw_bytes).expect("Valid tray icon asset");
                 let rgba = img.to_rgba8();
                 let (w, h) = (rgba.width(), rgba.height());
                 tauri::image::Image::new_owned(rgba.into_raw(), w, h)

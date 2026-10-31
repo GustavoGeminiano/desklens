@@ -58,6 +58,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     } else if (window.__TAURI__?.window) {
       const currentWindow = window.__TAURI__.window.getCurrentWindow();
       await currentWindow.setFullscreen(false);
+      await currentWindow.setDecorations(true);
       await currentWindow.hide();
     }
   }
@@ -890,7 +891,9 @@ window.addEventListener("DOMContentLoaded", async () => {
             setViewMode("overlay");
             if (window.__TAURI__?.window) {
               const currentWindow = window.__TAURI__.window.getCurrentWindow();
-              await currentWindow.setFullscreen(true);
+              await currentWindow.setDecorations(false);
+                await currentWindow.setFullscreen(true);
+                await currentWindow.setAlwaysOnTop(true);
             }
           }
         } catch (err) {
