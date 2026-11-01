@@ -12,8 +12,12 @@ if [ "$1" = "--trigger" ] || [ "$1" = "-t" ] || [ "$1" = "trigger" ]; then
     python3 -c "import socket; s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('$SOCKET'); s.sendall(b'trigger\n'); s.close()" 2>/dev/null && exit 0
   fi
   # If socket isn't active, fallback to binary if compiled, otherwise start full dev instance
-  if [ -x "$SCRIPT_DIR/src-tauri/target/release/desklens" ]; then
+  if [ -x "$SCRIPT_DIR/target/release/desklens" ]; then
+    exec "$SCRIPT_DIR/target/release/desklens" --trigger
+  elif [ -x "$SCRIPT_DIR/src-tauri/target/release/desklens" ]; then
     exec "$SCRIPT_DIR/src-tauri/target/release/desklens" --trigger
+  elif [ -x "$SCRIPT_DIR/target/debug/desklens" ]; then
+    exec "$SCRIPT_DIR/target/debug/desklens" --trigger
   elif [ -x "$SCRIPT_DIR/src-tauri/target/debug/desklens" ]; then
     exec "$SCRIPT_DIR/src-tauri/target/debug/desklens" --trigger
   fi
@@ -108,9 +112,15 @@ if [ "$1" = "--dev" ]; then
   echo "🚀 [DeskLens] Launching in development mode with live reload..."
   shift
   exec npm run tauri dev "$@"
+elif [ -x "$SCRIPT_DIR/target/release/desklens" ]; then
+  echo "🚀 [DeskLens] Launching optimized release binary..."
+  exec "$SCRIPT_DIR/target/release/desklens" "$@"
 elif [ -x "$SCRIPT_DIR/src-tauri/target/release/desklens" ]; then
   echo "🚀 [DeskLens] Launching optimized release binary..."
   exec "$SCRIPT_DIR/src-tauri/target/release/desklens" "$@"
+elif [ -x "$SCRIPT_DIR/target/debug/desklens" ]; then
+  echo "🚀 [DeskLens] Launching debug binary..."
+  exec "$SCRIPT_DIR/target/debug/desklens" "$@"
 elif [ -x "$SCRIPT_DIR/src-tauri/target/debug/desklens" ]; then
   echo "🚀 [DeskLens] Launching debug binary..."
   exec "$SCRIPT_DIR/src-tauri/target/debug/desklens" "$@"
