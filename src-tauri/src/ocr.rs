@@ -7,6 +7,21 @@ pub struct OcrWord {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    #[serde(default)]
+    pub confidence: f32,
+}
+
+impl Default for OcrWord {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            confidence: 100.0,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -238,6 +253,12 @@ pub fn normalize_code_punctuation(text: &str) -> String {
     s = s.replace(['\u{00A0}', '\u{2007}', '\u{202F}'], " ");
     s = s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "");
 
+    // 7. Simplify OCR quotation mark doubling and mismatched quote artifacts
+    s = s.replace("'\"", "'").replace("\"'", "'");
+    if s.starts_with('"') && (s.ends_with("':") || s.ends_with("',") || s.ends_with("')")) {
+        s = format!("'{}", &s[1..]);
+    }
+
     s
 }
 
@@ -258,46 +279,147 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
     }
 
     // 2. Coalesce lines that are horizontally adjacent fragments of the same visual line
-    // (resolving OCR horizontal split artifacts without falsely merging tightly-spaced consecutive lines)
-    let mut lines: Vec<OcrLine> = Vec::new();
-    for mut r_line in raw_lines {
-        let mut merged = false;
-        for existing in &mut lines {
-            let top = existing.y.max(r_line.y);
-            let bottom = (existing.y + existing.height).min(r_line.y + r_line.height);
-            let v_overlap = (bottom - top).max(0.0);
-            let min_h = existing.height.min(r_line.height);
-
-            let center_1 = existing.y + existing.height * 0.5;
-            let center_2 = r_line.y + r_line.height * 0.5;
-            let center_diff = (center_1 - center_2).abs();
-
-            // True horizontal fragments of the same visual line:
-            // - Overlap vertically by >= 50%
-            // - Vertical centers are very close (<= 35% of min height)
-            // - No word in r_line horizontally collides with any word in existing
-            let is_same_line = min_h > 0.0
-                && (v_overlap / min_h) >= 0.50
-                && center_diff <= min_h * 0.35
-                && !words_collide_horizontally(&existing.words, &r_line.words);
-
-            if is_same_line {
-                existing.words.append(&mut r_line.words);
-                existing.words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
-                let (nx, ny, nw, nh) = compute_words_bounding_box(&existing.words);
-                existing.x = nx;
-                existing.y = ny;
-                existing.width = nw;
-                existing.height = nh;
-                merged = true;
-                break;
+    // (resolving OCR horizontal split artifacts without falsely merging tightly-spaced consecutive lines or columns)
+    let mut initial_total_w = 0.0;
+    let mut initial_total_chars = 0;
+    for line in &raw_lines {
+        for word in &line.words {
+            let count = word.text.chars().count();
+            if count >= 2 && word.width > 0.0 {
+                initial_total_w += word.width;
+                initial_total_chars += count;
             }
         }
-        if !merged {
-            r_line.words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
-            lines.push(r_line);
+    }
+    if initial_total_chars == 0 {
+        for line in &raw_lines {
+            for word in &line.words {
+                let count = word.text.chars().count();
+                if count >= 1 && word.width > 0.0 {
+                    initial_total_w += word.width;
+                    initial_total_chars += count;
+                }
+            }
         }
     }
+    let char_w = if initial_total_chars > 0 {
+        (initial_total_w / initial_total_chars as f64).max(3.0)
+    } else {
+        8.0
+    };
+
+    let mut lines: Vec<OcrLine> = raw_lines;
+    loop {
+        let mut merged_any = false;
+        let mut i = 0;
+        while i < lines.len() {
+            let mut j = i + 1;
+            while j < lines.len() {
+                let min_h = lines[i].height.min(lines[j].height);
+                let max_h = lines[i].height.max(lines[j].height);
+                if min_h <= 0.0 {
+                    j += 1;
+                    continue;
+                }
+
+                let top = lines[i].y.max(lines[j].y);
+                let bottom = (lines[i].y + lines[i].height).min(lines[j].y + lines[j].height);
+                let v_overlap = (bottom - top).max(0.0);
+
+                let center_1 = lines[i].y + lines[i].height * 0.5;
+                let center_2 = lines[j].y + lines[j].height * 0.5;
+                let center_diff = (center_1 - center_2).abs();
+
+                // Optimization: prune non-overlapping lines immediately to prevent O(N^2) scaling slowdown
+                if (v_overlap / min_h) < 0.50 || center_diff > (max_h * 0.35).max(min_h * 0.35) {
+                    j += 1;
+                    continue;
+                }
+
+                // Line fragment bounding box gap
+                let line_a_right = lines[i].x + lines[i].width;
+                let line_b_right = lines[j].x + lines[j].width;
+                let line_gap = if lines[j].x >= line_a_right {
+                    lines[j].x - line_a_right
+                } else if lines[i].x >= line_b_right {
+                    lines[i].x - line_b_right
+                } else {
+                    0.0
+                };
+
+                let mut word_gap = f64::INFINITY;
+                for wa in &lines[i].words {
+                    for wb in &lines[j].words {
+                        let gap = if wb.x >= wa.x + wa.width {
+                            wb.x - (wa.x + wa.width)
+                        } else if wa.x >= wb.x + wb.width {
+                            wa.x - (wb.x + wb.width)
+                        } else {
+                            0.0
+                        };
+                        if gap < word_gap {
+                            word_gap = gap;
+                        }
+                    }
+                }
+
+                let horizontal_gap = line_gap.min(word_gap);
+                // Cap max_allowed_gap at 35.0px so headlines/text never merge across column gutters (>= 40px),
+                // while normal words in a line (< 25-30px apart) coalesce properly.
+                let max_allowed_gap = (min_h * 1.5).max(char_w * 2.5).min(35.0);
+
+                let is_same_line = horizontal_gap <= max_allowed_gap + 1e-4
+                    && !words_collide_horizontally(&lines[i].words, &lines[j].words);
+
+                if is_same_line {
+                    let mut other_words = lines.remove(j).words;
+                    lines[i].words.append(&mut other_words);
+                    lines[i].words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
+                    let (nx, ny, nw, nh) = compute_words_bounding_box(&lines[i].words);
+                    lines[i].x = nx;
+                    lines[i].y = ny;
+                    lines[i].width = nw;
+                    lines[i].height = nh;
+                    merged_any = true;
+                } else {
+                    j += 1;
+                }
+            }
+            i += 1;
+        }
+        if !merged_any {
+            break;
+        }
+    }
+
+    for line in &mut lines {
+        line.words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
+    // Filter out isolated single-symbol ghost lines that collide horizontally with another line in the same vertical span
+    const NOISE_CHARS: &[char] = &['|', '—', '_', '~', '^', '•', '·', '«', '»', '¢', '§', '°', '-', '='];
+    let original_lines = lines.clone();
+    lines.retain(|candidate| {
+        if candidate.words.len() == 1 {
+            let t = candidate.words[0].text.trim();
+            if t.chars().count() == 1 && NOISE_CHARS.contains(&t.chars().next().unwrap()) {
+                for other in &original_lines {
+                    if candidate.y != other.y || candidate.x != other.x {
+                        if words_collide_horizontally(&candidate.words, &other.words) {
+                            let top = candidate.y.max(other.y);
+                            let bottom = (candidate.y + candidate.height).min(other.y + other.height);
+                            let v_overlap = (bottom - top).max(0.0);
+                            let min_h = candidate.height.min(other.height);
+                            if min_h > 0.0 && (v_overlap / min_h) >= 0.50 {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        true
+    });
 
     // 3. Sort lines top-to-bottom by y coordinate
     lines.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal));
@@ -513,8 +635,57 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
         if level == 4 {
             line_boxes.insert(key, (left, top, width, height));
         } else if level == 5 {
+            let conf: f32 = parts[10].trim().parse().unwrap_or(0.0);
             let word_text = parts[11].trim().to_string();
+
+            // 1. Discard empty / whitespace words
             if word_text.is_empty() {
+                continue;
+            }
+
+            let raw_w: f64 = parts[8].trim().parse().unwrap_or(0.0);
+            let raw_h: f64 = parts[9].trim().parse().unwrap_or(0.0);
+
+            // 2. Sanity check: discard boxes where width < 3.0 or height < 3.0
+            if raw_w < 3.0 || raw_h < 3.0 || width < 1.5 || height < 1.5 {
+                continue;
+            }
+
+            let char_count = word_text.chars().count();
+
+            // 3. Filter invalid / NaN and low-confidence hallucinations: require finite conf and conf >= 35.0 (and conf >= 45.0 for words of length <= 2)
+            if !conf.is_finite() || conf.round() < 35.0 || (conf.round() < 45.0 && char_count <= 2) {
+                continue;
+            }
+
+            // 4. Filter vertical margin artifacts: discard tall narrow boxes from paper folds / margins.
+            // Do NOT drop single narrow characters like 'I', '1', 'l', 'i', '!', '[', ']', '|', '/', '\\'
+            // even if their aspect ratio exceeds 2.8, unless height is excessively tall (e.g., height > 40.0 && width < 15.0).
+            let is_single_narrow_char = if char_count == 1 {
+                let ch = word_text.chars().next().unwrap_or(' ');
+                ch.is_alphanumeric() || matches!(ch, '!' | '[' | ']' | '|' | '/' | '\\' | '(' | ')' | '{' | '}' | ':' | ';' | '?')
+            } else {
+                false
+            };
+
+            let is_excessive_tall_sliver = height > 40.0 && width < 15.0;
+            let should_filter_aspect = if is_excessive_tall_sliver {
+                true
+            } else if char_count >= 2 && char_count <= 3 {
+                true
+            } else if !is_single_narrow_char {
+                true
+            } else {
+                false
+            };
+
+            if height > 2.8 * width && should_filter_aspect {
+                continue;
+            }
+
+            // 5. Filter single noise symbols: discard isolated symbols when conf < 75.0
+            const NOISE_SYMBOLS: &[char] = &['|', '—', '_', '~', '^', '•', '·', '«', '»', '¢', '§', '°', '-', '='];
+            if char_count == 1 && NOISE_SYMBOLS.contains(&word_text.chars().next().unwrap()) && conf < 75.0 {
                 continue;
             }
 
@@ -524,6 +695,7 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
                 y: top,
                 width,
                 height,
+                confidence: conf,
             };
 
             line_words.entry(key).or_default().push(word);
@@ -625,6 +797,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                         y: (rect.Y as f64) * inv_scale,
                         width: (rect.Width as f64) * inv_scale,
                         height: (rect.Height as f64) * inv_scale,
+                        confidence: 100.0,
                     });
                 }
             }
@@ -678,14 +851,32 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
 
     let temp_path_str = temp_image_path.to_string_lossy().to_string();
 
-    // Check tesseract with multi-language (por+eng), --dpi 150, or fallback to default
+    // Check tesseract with multi-language (por+eng), --dpi 300, --psm 11, or fallback to default
     let output = match Command::new("tesseract")
-        .args([&temp_path_str, "stdout", "--dpi", "150", "-l", "por+eng", "tsv"])
+        .args([
+            &temp_path_str,
+            "stdout",
+            "--dpi",
+            "300",
+            "--psm",
+            "11",
+            "-l",
+            "por+eng",
+            "tsv",
+        ])
         .output()
     {
         Ok(out) if out.status.success() => out,
         _ => Command::new("tesseract")
-            .args([&temp_path_str, "stdout", "--dpi", "150", "tsv"])
+            .args([
+                &temp_path_str,
+                "stdout",
+                "--dpi",
+                "300",
+                "--psm",
+                "11",
+                "tsv",
+            ])
             .output()
             .map_err(|e| {
                 let _ = std::fs::remove_file(&temp_image_path);
@@ -736,6 +927,7 @@ mod tests {
                 y: 20.0,
                 width: 50.0,
                 height: 15.0,
+                confidence: 100.0,
             },
             OcrWord {
                 text: "World".to_string(),
@@ -743,6 +935,7 @@ mod tests {
                 y: 18.0,
                 width: 60.0,
                 height: 19.0,
+                confidence: 100.0,
             },
         ];
         let (bx, by, bw, bh) = compute_words_bounding_box(&words);

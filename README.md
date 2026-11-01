@@ -164,6 +164,16 @@ Double-click the installer and launch DeskLens. It will run in your system tray 
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 
+---
+
+<div align="center">
+
+> Disclaimer: DeskLens is an independent open-source project and is not affiliated with, endorsed by, or associated with Google LLC. Google Lens is a trademark of Google LLC.
+
+</div>
+
+---
+
 <div align="center">
 Developed with ❤️ by <strong>Gustavo Geminiano</strong>
 </div>

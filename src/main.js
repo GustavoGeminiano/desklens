@@ -483,6 +483,18 @@ window.addEventListener("DOMContentLoaded", async () => {
       ocrResult.lines.forEach((line, lineIdx) => {
         (line.words || []).forEach((word, wordIdx) => {
           if (!word.text || !word.width || !word.height) return;
+
+          // Defensive guards against extreme aspect-ratio vertical border boxes, sub-3px boxes, and border margin artifacts
+          if (word.width < 3 || word.height < 3) return;
+
+          const isSingleNarrow = word.text.length === 1 && /^[a-zA-Z0-9!\[\]|/\\(){}:;?]$/.test(word.text);
+          const isExcessiveTall = word.height > 40 && word.width < 15;
+          const isEdgeBorder = (word.x <= 2 || word.y <= 2 || (word.x + word.width) >= realW - 2 || (word.y + word.height) >= realH - 2) && (word.height > 30 && word.width < 15);
+          if (isEdgeBorder) return;
+
+          const shouldFilterAspect = isExcessiveTall || (word.text.length >= 2 && word.text.length <= 3) || !isSingleNarrow;
+          if (shouldFilterAspect && word.height > word.width * 3.2 && word.text.length <= 3) return;
+
           items.push({
             text: word.text,
             x: word.x * scaleX,

@@ -25,6 +25,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
         y: 84.0,
         width: 100.0,
         height: 20.0,
+        confidence: 100.0,
     }];
     assert_eq!(
         compute_words_bounding_box(&single),
@@ -39,6 +40,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
             y: -10.0,
             width: 30.0,
             height: 15.0,
+            confidence: 100.0,
         },
         OcrWord {
             text: "Right".to_string(),
@@ -46,6 +48,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
             y: 5.0,
             width: 40.0,
             height: 25.0,
+            confidence: 100.0,
         },
     ];
     let (nx, ny, nw, nh) = compute_words_bounding_box(&negative);
@@ -62,6 +65,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
             y: 50.0,
             width: 0.0,
             height: 0.0,
+            confidence: 100.0,
         },
         OcrWord {
             text: "Dot2".to_string(),
@@ -69,6 +73,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
             y: 80.0,
             width: 0.0,
             height: 0.0,
+            confidence: 100.0,
         },
     ];
     let (zx, zy, zw, zh) = compute_words_bounding_box(&zero_dims);
@@ -85,6 +90,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
             y: 10.0,
             width: 50.0,
             height: 20.0,
+            confidence: 100.0,
         },
         OcrWord {
             text: "Same".to_string(),
@@ -92,6 +98,7 @@ fn test_adv_compute_words_bounding_box_edge_cases() {
             y: 10.0,
             width: 50.0,
             height: 20.0,
+            confidence: 100.0,
         },
     ];
     assert_eq!(
@@ -255,6 +262,43 @@ fn test_adv_parse_tesseract_tsv_scale_stress() {
         "Parsing 1500 TSV rows took {}ms, should be <100ms",
         elapsed.as_millis()
     );
+}
+
+#[test]
+fn test_adv_tsv_nan_and_inf_confidences_rejected() {
+    let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+4\t1\t1\t1\t1\t0\t10\t10\t500\t20\t-1\t\n\
+5\t1\t1\t1\t1\t1\t10\t10\t80\t20\tNaN\tNanWord\n\
+5\t1\t1\t1\t1\t2\t100\t10\t80\t20\tinf\tInfWord\n\
+5\t1\t1\t1\t1\t3\t200\t10\t80\t20\t-inf\tNegInfWord\n\
+5\t1\t1\t1\t1\t4\t300\t10\t80\t20\t-1\tNegOneWord\n\
+5\t1\t1\t1\t1\t5\t400\t10\t80\t20\t90.0\tValidNormalWord\n";
+
+    let res = parse_tesseract_tsv(tsv);
+    assert!(!res.full_text.contains("NanWord"));
+    assert!(!res.full_text.contains("InfWord"));
+    assert!(!res.full_text.contains("NegInfWord"));
+    assert!(!res.full_text.contains("NegOneWord"));
+    assert!(res.full_text.contains("ValidNormalWord"));
+}
+
+#[test]
+fn test_adv_narrow_characters_preserved() {
+    let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+4\t1\t1\t1\t1\t0\t10\t10\t300\t20\t-1\t\n\
+5\t1\t1\t1\t1\t1\t10\t10\t5\t20\t92.0\tI\n\
+5\t1\t1\t1\t1\t2\t25\t10\t30\t20\t95.0\tsee\n\
+5\t1\t1\t1\t1\t3\t65\t10\t5\t20\t90.0\t1\n\
+5\t1\t1\t1\t1\t4\t80\t10\t40\t20\t93.0\titem\n\
+5\t1\t1\t1\t1\t5\t130\t10\t5\t20\t91.0\t!\n";
+
+    let res = parse_tesseract_tsv(tsv);
+    assert!(res.full_text.contains("I"));
+    assert!(res.full_text.contains("see"));
+    assert!(res.full_text.contains("1"));
+    assert!(res.full_text.contains("item"));
+    assert!(res.full_text.contains("!"));
+    assert_eq!(res.word_count, 5);
 }
 
 // =============================================================================

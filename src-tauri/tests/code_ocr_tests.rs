@@ -38,7 +38,6 @@ fn test_code_ocr_native_pipeline_end_to_end() {
 
     // 2. Test Dark Theme directly through extract_text_native
     let dark_res = extract_text_native(&dark_img).expect("extract dark text");
-    println!("=== DARK THEME RESULT ===\n{}", dark_res.full_text);
 
     assert!(dark_res.full_text.contains("def "), "Dark theme must contain 'def'");
     assert!(dark_res.full_text.contains(":"), "Dark theme must contain colon ':'");
@@ -140,8 +139,8 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
             width: 90.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "import".to_string(), x: 20.0, y: 20.0, width: 60.0, height: 20.0 },
-                OcrWord { text: "os".to_string(), x: 90.0, y: 20.0, width: 20.0, height: 20.0 },
+                OcrWord { text: "import".to_string(), x: 20.0, y: 20.0, width: 60.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "os".to_string(), x: 90.0, y: 20.0, width: 20.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -151,8 +150,8 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
             width: 100.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "import".to_string(), x: 20.0, y: 50.0, width: 60.0, height: 20.0 },
-                OcrWord { text: "sys".to_string(), x: 90.0, y: 50.0, width: 30.0, height: 20.0 },
+                OcrWord { text: "import".to_string(), x: 20.0, y: 50.0, width: 60.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "sys".to_string(), x: 90.0, y: 50.0, width: 30.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -162,11 +161,11 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
             width: 320.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "def".to_string(), x: 20.0, y: 110.0, width: 30.0, height: 20.0 },
-                OcrWord { text: "process(data:".to_string(), x: 60.0, y: 110.0, width: 130.0, height: 20.0 },
-                OcrWord { text: "list)".to_string(), x: 200.0, y: 110.0, width: 50.0, height: 20.0 },
-                OcrWord { text: "->".to_string(), x: 260.0, y: 110.0, width: 20.0, height: 20.0 },
-                OcrWord { text: "bool:".to_string(), x: 290.0, y: 110.0, width: 50.0, height: 20.0 },
+                OcrWord { text: "def".to_string(), x: 20.0, y: 110.0, width: 30.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "process(data:".to_string(), x: 60.0, y: 110.0, width: 130.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "list)".to_string(), x: 200.0, y: 110.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "->".to_string(), x: 260.0, y: 110.0, width: 20.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "bool:".to_string(), x: 290.0, y: 110.0, width: 50.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -176,9 +175,9 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
             width: 160.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "#".to_string(), x: 60.0, y: 140.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "Validate".to_string(), x: 80.0, y: 140.0, width: 80.0, height: 20.0 },
-                OcrWord { text: "items".to_string(), x: 170.0, y: 140.0, width: 50.0, height: 20.0 },
+                OcrWord { text: "#".to_string(), x: 60.0, y: 140.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "Validate".to_string(), x: 80.0, y: 140.0, width: 80.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "items".to_string(), x: 170.0, y: 140.0, width: 50.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -188,11 +187,11 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
             width: 190.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "total".to_string(), x: 60.0, y: 170.0, width: 50.0, height: 20.0 },
-                OcrWord { text: "=".to_string(), x: 120.0, y: 170.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "(count".to_string(), x: 140.0, y: 170.0, width: 60.0, height: 20.0 },
-                OcrWord { text: "*".to_string(), x: 210.0, y: 170.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "2)".to_string(), x: 230.0, y: 170.0, width: 20.0, height: 20.0 },
+                OcrWord { text: "total".to_string(), x: 60.0, y: 170.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "=".to_string(), x: 120.0, y: 170.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "(count".to_string(), x: 140.0, y: 170.0, width: 60.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "*".to_string(), x: 210.0, y: 170.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "2)".to_string(), x: 230.0, y: 170.0, width: 20.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -202,10 +201,10 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
             width: 160.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "return".to_string(), x: 100.0, y: 200.0, width: 60.0, height: 20.0 },
-                OcrWord { text: "total".to_string(), x: 170.0, y: 200.0, width: 50.0, height: 20.0 },
-                OcrWord { text: ">".to_string(), x: 230.0, y: 200.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "0".to_string(), x: 250.0, y: 200.0, width: 10.0, height: 20.0 },
+                OcrWord { text: "return".to_string(), x: 100.0, y: 200.0, width: 60.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "total".to_string(), x: 170.0, y: 200.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: ">".to_string(), x: 230.0, y: 200.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "0".to_string(), x: 250.0, y: 200.0, width: 10.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -238,21 +237,21 @@ fn test_coalesce_and_structure_lines_indentation_and_blank_lines() {
 fn test_coalesce_and_structure_lines_reorders_split_horizontal_fragments() {
     // Simulate OCR artifact where a single line `result = (a + b) * 2` was split into two
     // lines that overlap vertically, but where the right fragment was returned first:
-    // Fragment 1 (right): `(a + b) * 2` (x=200, y=100)
+    // Fragment 1 (right): `(a + b) * 2` (x=150, y=100)
     // Fragment 2 (left): `result =` (x=50, y=101)
     let raw_split_lines = vec![
         OcrLine {
             text: "(a + b) * 2".to_string(),
-            x: 200.0,
+            x: 150.0,
             y: 100.0,
-            width: 100.0,
+            width: 90.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "(a".to_string(), x: 200.0, y: 100.0, width: 20.0, height: 20.0 },
-                OcrWord { text: "+".to_string(), x: 230.0, y: 100.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "b)".to_string(), x: 250.0, y: 100.0, width: 20.0, height: 20.0 },
-                OcrWord { text: "*".to_string(), x: 280.0, y: 100.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "2".to_string(), x: 300.0, y: 100.0, width: 10.0, height: 20.0 },
+                OcrWord { text: "(a".to_string(), x: 150.0, y: 100.0, width: 20.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "+".to_string(), x: 175.0, y: 100.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "b)".to_string(), x: 190.0, y: 100.0, width: 20.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "*".to_string(), x: 215.0, y: 100.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "2".to_string(), x: 230.0, y: 100.0, width: 10.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -262,8 +261,8 @@ fn test_coalesce_and_structure_lines_reorders_split_horizontal_fragments() {
             width: 80.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "result".to_string(), x: 50.0, y: 101.0, width: 50.0, height: 20.0 },
-                OcrWord { text: "=".to_string(), x: 110.0, y: 101.0, width: 10.0, height: 20.0 },
+                OcrWord { text: "result".to_string(), x: 50.0, y: 101.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "=".to_string(), x: 110.0, y: 101.0, width: 10.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -323,9 +322,9 @@ fn test_coalesce_and_structure_lines_2_space_indentation() {
             width: 140.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "function".to_string(), x: 20.0, y: 20.0, width: 70.0, height: 20.0 },
-                OcrWord { text: "run()".to_string(), x: 100.0, y: 20.0, width: 40.0, height: 20.0 },
-                OcrWord { text: "{".to_string(), x: 150.0, y: 20.0, width: 10.0, height: 20.0 },
+                OcrWord { text: "function".to_string(), x: 20.0, y: 20.0, width: 70.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "run()".to_string(), x: 100.0, y: 20.0, width: 40.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "{".to_string(), x: 150.0, y: 20.0, width: 10.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -335,10 +334,10 @@ fn test_coalesce_and_structure_lines_2_space_indentation() {
             width: 90.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "let".to_string(), x: 40.0, y: 50.0, width: 25.0, height: 20.0 },
-                OcrWord { text: "a".to_string(), x: 75.0, y: 50.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "=".to_string(), x: 95.0, y: 50.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "1;".to_string(), x: 115.0, y: 50.0, width: 15.0, height: 20.0 },
+                OcrWord { text: "let".to_string(), x: 40.0, y: 50.0, width: 25.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "a".to_string(), x: 75.0, y: 50.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "=".to_string(), x: 95.0, y: 50.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "1;".to_string(), x: 115.0, y: 50.0, width: 15.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -348,10 +347,10 @@ fn test_coalesce_and_structure_lines_2_space_indentation() {
             width: 90.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "let".to_string(), x: 60.0, y: 80.0, width: 25.0, height: 20.0 },
-                OcrWord { text: "b".to_string(), x: 95.0, y: 80.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "=".to_string(), x: 115.0, y: 80.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "2;".to_string(), x: 135.0, y: 80.0, width: 15.0, height: 20.0 },
+                OcrWord { text: "let".to_string(), x: 60.0, y: 80.0, width: 25.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "b".to_string(), x: 95.0, y: 80.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "=".to_string(), x: 115.0, y: 80.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "2;".to_string(), x: 135.0, y: 80.0, width: 15.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -361,10 +360,10 @@ fn test_coalesce_and_structure_lines_2_space_indentation() {
             width: 90.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "let".to_string(), x: 80.0, y: 110.0, width: 25.0, height: 20.0 },
-                OcrWord { text: "c".to_string(), x: 115.0, y: 110.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "=".to_string(), x: 135.0, y: 110.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "3;".to_string(), x: 155.0, y: 110.0, width: 15.0, height: 20.0 },
+                OcrWord { text: "let".to_string(), x: 80.0, y: 110.0, width: 25.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "c".to_string(), x: 115.0, y: 110.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "=".to_string(), x: 135.0, y: 110.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "3;".to_string(), x: 155.0, y: 110.0, width: 15.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -394,8 +393,8 @@ fn test_coalesce_and_structure_lines_proportional_tolerance_snapping() {
             width: 140.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "def".to_string(), x: base_x, y: 20.0, width: 30.0, height: 20.0 },
-                OcrWord { text: "calculate():".to_string(), x: base_x + 40.0, y: 20.0, width: 100.0, height: 20.0 },
+                OcrWord { text: "def".to_string(), x: base_x, y: 20.0, width: 30.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "calculate():".to_string(), x: base_x + 40.0, y: 20.0, width: 100.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -405,8 +404,8 @@ fn test_coalesce_and_structure_lines_proportional_tolerance_snapping() {
             width: 80.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "return".to_string(), x: base_x + indent_4_spaces_px, y: 50.0, width: 50.0, height: 20.0 },
-                OcrWord { text: "42".to_string(), x: base_x + indent_4_spaces_px + 60.0, y: 50.0, width: 20.0, height: 20.0 },
+                OcrWord { text: "return".to_string(), x: base_x + indent_4_spaces_px, y: 50.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "42".to_string(), x: base_x + indent_4_spaces_px + 60.0, y: 50.0, width: 20.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -431,9 +430,9 @@ fn test_coalesce_and_structure_lines_single_character_words() {
             width: 50.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "x".to_string(), x: 20.0, y: 20.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "=".to_string(), x: 40.0, y: 20.0, width: 10.0, height: 20.0 },
-                OcrWord { text: "1".to_string(), x: 60.0, y: 20.0, width: 10.0, height: 20.0 },
+                OcrWord { text: "x".to_string(), x: 20.0, y: 20.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "=".to_string(), x: 40.0, y: 20.0, width: 10.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "1".to_string(), x: 60.0, y: 20.0, width: 10.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -467,8 +466,8 @@ fn test_coalesce_and_structure_lines_does_not_merge_tightly_spaced_distinct_line
             width: 130.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "def".to_string(), x: 20.0, y: 100.0, width: 30.0, height: 20.0 },
-                OcrWord { text: "calculate():".to_string(), x: 60.0, y: 100.0, width: 90.0, height: 20.0 },
+                OcrWord { text: "def".to_string(), x: 20.0, y: 100.0, width: 30.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "calculate():".to_string(), x: 60.0, y: 100.0, width: 90.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -478,8 +477,8 @@ fn test_coalesce_and_structure_lines_does_not_merge_tightly_spaced_distinct_line
             width: 80.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "return".to_string(), x: 50.0, y: 109.0, width: 50.0, height: 20.0 },
-                OcrWord { text: "42".to_string(), x: 110.0, y: 109.0, width: 20.0, height: 20.0 },
+                OcrWord { text: "return".to_string(), x: 50.0, y: 109.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "42".to_string(), x: 110.0, y: 109.0, width: 20.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -541,7 +540,7 @@ fn test_coalesce_and_structure_lines_three_fragments_out_of_order() {
             width: 30.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "def".to_string(), x: 20.0, y: 100.0, width: 30.0, height: 20.0 },
+                OcrWord { text: "def".to_string(), x: 20.0, y: 100.0, width: 30.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -551,8 +550,8 @@ fn test_coalesce_and_structure_lines_three_fragments_out_of_order() {
             width: 70.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "->".to_string(), x: 230.0, y: 100.0, width: 20.0, height: 20.0 },
-                OcrWord { text: "bool:".to_string(), x: 260.0, y: 100.0, width: 40.0, height: 20.0 },
+                OcrWord { text: "->".to_string(), x: 230.0, y: 100.0, width: 20.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "bool:".to_string(), x: 260.0, y: 100.0, width: 40.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -562,8 +561,8 @@ fn test_coalesce_and_structure_lines_three_fragments_out_of_order() {
             width: 160.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "calculate(value:".to_string(), x: 60.0, y: 100.0, width: 110.0, height: 20.0 },
-                OcrWord { text: "int)".to_string(), x: 180.0, y: 100.0, width: 40.0, height: 20.0 },
+                OcrWord { text: "calculate(value:".to_string(), x: 60.0, y: 100.0, width: 110.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "int)".to_string(), x: 180.0, y: 100.0, width: 40.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
@@ -598,9 +597,9 @@ fn test_coalesce_and_structure_lines_hanging_indentation_continuation() {
             width: 200.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "def".to_string(), x: 20.0, y: 20.0, width: 30.0, height: 20.0 },
-                OcrWord { text: "query(alpha:".to_string(), x: 60.0, y: 20.0, width: 120.0, height: 20.0 },
-                OcrWord { text: "int,".to_string(), x: 190.0, y: 20.0, width: 40.0, height: 20.0 },
+                OcrWord { text: "def".to_string(), x: 20.0, y: 20.0, width: 30.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "query(alpha:".to_string(), x: 60.0, y: 20.0, width: 120.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "int,".to_string(), x: 190.0, y: 20.0, width: 40.0, height: 20.0, confidence: 100.0 },
             ],
         },
         OcrLine {
@@ -610,10 +609,10 @@ fn test_coalesce_and_structure_lines_hanging_indentation_continuation() {
             width: 170.0,
             height: 20.0,
             words: vec![
-                OcrWord { text: "beta:".to_string(), x: 120.0, y: 50.0, width: 50.0, height: 20.0 },
-                OcrWord { text: "int)".to_string(), x: 180.0, y: 50.0, width: 40.0, height: 20.0 },
-                OcrWord { text: "->".to_string(), x: 230.0, y: 50.0, width: 20.0, height: 20.0 },
-                OcrWord { text: "None:".to_string(), x: 260.0, y: 50.0, width: 50.0, height: 20.0 },
+                OcrWord { text: "beta:".to_string(), x: 120.0, y: 50.0, width: 50.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "int)".to_string(), x: 180.0, y: 50.0, width: 40.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "->".to_string(), x: 230.0, y: 50.0, width: 20.0, height: 20.0, confidence: 100.0 },
+                OcrWord { text: "None:".to_string(), x: 260.0, y: 50.0, width: 50.0, height: 20.0, confidence: 100.0 },
             ],
         },
     ];
