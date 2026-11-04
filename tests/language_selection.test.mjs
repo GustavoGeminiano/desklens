@@ -5,7 +5,9 @@ import path from "node:path";
 import vm from "node:vm";
 
 // Helper to set up simulated environment for language selection testing
-function setupEnvironment() {
+function setupEnvironment(options = {}) {
+  const { invokeMock = null, initialStorage = {} } = options;
+
   class MockClassList {
     constructor() {
       this._classes = new Set();
@@ -44,6 +46,17 @@ function setupEnvironment() {
     appendChild(child) {
       child.parentNode = this;
       this.children.push(child);
+    }
+
+    querySelector(selector) {
+      if (selector === 'option[value="auto"]') {
+        return this.options.find((o) => o.value === "auto") || null;
+      }
+      if (selector.startsWith('option[value="')) {
+        const val = selector.match(/value="([^"]+)"/)?.[1];
+        return this.options.find((o) => o.value === val) || null;
+      }
+      return null;
     }
 
     querySelectorAll(selector) {
@@ -104,6 +117,7 @@ function setupEnvironment() {
     "search-action-btn": new MockElement("button", "search-action-btn"),
     "translate-action-btn": new MockElement("button", "translate-action-btn"),
     "ocr-action-btn": new MockElement("button", "ocr-action-btn"),
+    "lang-selector-group": new MockElement("div", "lang-selector-group"),
     "source-lang-select": new MockElement("select", "source-lang-select"),
     "target-lang-select": new MockElement("select", "target-lang-select"),
     "capture-container": new MockElement("div", "capture-container"),
@@ -136,7 +150,7 @@ function setupEnvironment() {
 
   elements["capture-container"].appendChild(elements["frozen-image"]);
 
-  const storage = {};
+  const storage = { ...initialStorage };
   const mockLocalStorage = {
     getItem: (key) => storage[key] || null,
     setItem: (key, val) => {
@@ -175,6 +189,10 @@ function setupEnvironment() {
         core: {
           invoke: async (cmd, args) => {
             invokeCalls.push({ cmd, args });
+            if (invokeMock) {
+              const customResult = await invokeMock(cmd, args);
+              if (customResult !== undefined) return customResult;
+            }
             if (cmd === "extract_text_from_crop") {
               return {
                 boxes: [
@@ -344,3 +362,153 @@ test("R2.5: Invoking translate_on_screen passes chosen sourceLang and targetLang
   assert.ok(Array.isArray(transCall.args.boxes));
   assert.equal(transCall.args.boxes.length, 1);
 });
+
+test("R2.6: Unpacks enriched translate_on_screen payload { boxes, detected_source_lang } without TypeError", async () => {
+  const env = setupEnvironment({
+    invokeMock: async (cmd) => {
+      if (cmd === "translate_on_screen") {
+        return {
+          boxes: [
+            {
+              text: "Bonjour",
+              x: 10,
+              y: 10,
+              width: 60,
+              height: 20,
+              translated_text: "Hello",
+              is_paragraph: true,
+            },
+          ],
+          detected_source_lang: "fr",
+        };
+      }
+    },
+  });
+
+  const translateBtn = env.elements["translate-action-btn"];
+  // Clicking translate should succeed and not throw TypeError: .map is not a function
+  await assert.doesNotReject(async () => {
+    await translateBtn.dispatchEvent("click");
+  });
+
+  const transCalls = env.invokeCalls.filter((c) => c.cmd === "translate_on_screen");
+  assert.ok(transCalls.length >= 1, "translate_on_screen should be called");
+});
+
+test("R2.7: Smart target language switch redirects from 'pt' to 'en' when detected source is 'pt'", async () => {
+  const env = setupEnvironment({
+    invokeMock: async (cmd, args) => {
+      if (cmd === "translate_on_screen") {
+        return {
+          boxes: [
+            {
+              text: "Lembrando que...",
+              x: 21,
+              y: 14,
+              width: 969,
+              height: 69,
+              translated_text: args?.targetLang === "en" ? "Remember that..." : "Lembrando que...",
+              is_paragraph: true,
+            },
+          ],
+          detected_source_lang: "pt",
+        };
+      }
+    },
+  });
+
+  const sourceSelect = env.elements["source-lang-select"];
+  const targetSelect = env.elements["target-lang-select"];
+  const translateBtn = env.elements["translate-action-btn"];
+
+  sourceSelect.value = "auto";
+  targetSelect.value = "pt";
+
+  await translateBtn.dispatchEvent("click");
+
+  // Target must automatically switch from 'pt' to 'en' to avoid no-op translation
+  assert.equal(targetSelect.value, "en", "target-lang-select should be automatically switched to 'en'");
+  assert.equal(env.storage["desklens_target_lang"], "en", "Smart switch must persist 'en' to localStorage");
+  assert.ok(
+    translateBtn.title.includes("English") || translateBtn.title.includes("en"),
+    `Translate button title should reflect new target 'English': ${translateBtn.title}`
+  );
+});
+
+test("R2.8: #lang-selector-group remains visible and is not hidden by default in crop toolbar", () => {
+  const env = setupEnvironment();
+  const langGroup = env.elements["lang-selector-group"];
+  assert.ok(langGroup, "lang-selector-group must exist");
+  assert.equal(
+    langGroup.classList.contains("hidden"),
+    false,
+    "lang-selector-group must not have 'hidden' class by default"
+  );
+});
+
+test("R2.9: Auto-detect displays detected source language in the source selector option label", async () => {
+  const env = setupEnvironment({
+    invokeMock: async (cmd) => {
+      if (cmd === "translate_on_screen") {
+        return {
+          boxes: [
+            {
+              text: "Texto em português",
+              x: 10,
+              y: 10,
+              width: 100,
+              height: 20,
+              translated_text: "Text in Portuguese",
+            },
+          ],
+          detected_source_lang: "pt",
+        };
+      }
+    },
+  });
+
+  const translateBtn = env.elements["translate-action-btn"];
+  await translateBtn.dispatchEvent("click");
+
+  const sourceSelect = env.elements["source-lang-select"];
+  const autoOption = sourceSelect.options.find((o) => o.value === "auto");
+  assert.ok(autoOption, "Auto option must exist");
+  assert.ok(
+    autoOption.text.includes("PT") || autoOption.textContent.includes("PT"),
+    `Auto option text should display detected code (PT): '${autoOption.text}'`
+  );
+});
+
+test("R2.10: Smart target switch triggers second translation call with adjusted target language", async () => {
+  const env = setupEnvironment({
+    invokeMock: async (cmd, args) => {
+      if (cmd === "translate_on_screen") {
+        return {
+          boxes: [
+            {
+              text: "Texto de teste",
+              x: 10,
+              y: 10,
+              width: 100,
+              height: 20,
+              translated_text: args?.targetLang === "en" ? "Test text" : "Texto de teste",
+            },
+          ],
+          detected_source_lang: "pt",
+        };
+      }
+    },
+  });
+
+  const targetSelect = env.elements["target-lang-select"];
+  const translateBtn = env.elements["translate-action-btn"];
+
+  targetSelect.value = "pt";
+  await translateBtn.dispatchEvent("click");
+
+  const transCalls = env.invokeCalls.filter((c) => c.cmd === "translate_on_screen");
+  assert.equal(transCalls.length, 2, "Should re-invoke translation with switched target language");
+  assert.equal(transCalls[0].args.targetLang, "pt");
+  assert.equal(transCalls[1].args.targetLang, "en");
+});
+

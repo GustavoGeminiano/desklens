@@ -73,9 +73,9 @@
             <button id="search-action-btn" class="action-btn primary" title="Search with Google Lens">
               <span>🔍</span> Search Image
             </button>
-            <div id="lang-selector-group" class="lang-selector-group" title="Language Translation Pair">
-              <select id="source-lang-select" class="lang-select" title="Source Language">
-                <option value="auto">Auto Detect</option>
+            <div id="lang-selector-group" class="lang-selector-group" title="Language Translation Pair" aria-label="Language Translation Pair">
+              <select id="source-lang-select" class="lang-select" title="Source Language" aria-label="Source Language">
+                <option value="auto" selected>Auto Detect</option>
                 <option value="en">English</option>
                 <option value="pt">Portuguese</option>
                 <option value="es">Spanish</option>
@@ -87,8 +87,8 @@
                 <option value="ru">Russian</option>
                 <option value="ko">Korean</option>
               </select>
-              <span class="lang-arrow">→</span>
-              <select id="target-lang-select" class="lang-select" title="Target Language">
+              <span class="lang-arrow" aria-hidden="true">→</span>
+              <select id="target-lang-select" class="lang-select" title="Target Language" aria-label="Target Language">
                 <option value="pt" selected>Portuguese</option>
                 <option value="en">English</option>
                 <option value="es">Spanish</option>

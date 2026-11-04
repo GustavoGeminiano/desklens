@@ -95,8 +95,18 @@ window.addEventListener("DOMContentLoaded", async () => {
     currentCropDataUrl = null;
     cropBox.classList.add("hidden");
     cropActions.classList.add("hidden");
+    if (sourceLangSelect) {
+      const autoOption = (typeof sourceLangSelect.querySelector === "function")
+        ? sourceLangSelect.querySelector('option[value="auto"]')
+        : (sourceLangSelect.options ? Array.from(sourceLangSelect.options).find((o) => o.value === "auto") : null);
+      if (autoOption) {
+        autoOption.text = "Auto Detect";
+        autoOption.textContent = "Auto Detect";
+      }
+      sourceLangSelect.title = "Source Language";
+    }
     if (langSelectorGroup) {
-      langSelectorGroup.classList.add("hidden");
+      langSelectorGroup.title = "Language Translation Pair";
     }
     maskCutout.setAttribute("width", 0);
     maskCutout.setAttribute("height", 0);
@@ -628,6 +638,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Position floating action toolbar near the selection, clamped within screen bounds
   function positionActionToolbar() {
     cropActions.classList.remove("hidden");
+    if (langSelectorGroup) {
+      langSelectorGroup.classList.remove("hidden");
+    }
 
     const margin = 12;
     const toolbarW = cropActions.offsetWidth || 520;
@@ -832,6 +845,30 @@ window.addEventListener("DOMContentLoaded", async () => {
   const STORAGE_KEY_SOURCE_LANG = "desklens_source_lang";
   const STORAGE_KEY_TARGET_LANG = "desklens_target_lang";
 
+  function normalizeLanguageCode(code) {
+    if (!code || typeof code !== "string") return "pt";
+    const cleaned = code.trim().toLowerCase().split("-")[0];
+    const supported = ["pt", "en", "es", "fr", "de", "ja", "zh", "it", "ru", "ko"];
+    return supported.includes(cleaned) ? cleaned : "pt";
+  }
+
+  function evaluateSmartTargetSwitch(detectedSource, currentTarget) {
+    if (!detectedSource || !currentTarget) return currentTarget;
+    const normSource = normalizeLanguageCode(detectedSource);
+    const normTarget = normalizeLanguageCode(currentTarget);
+
+    if (normSource === normTarget) {
+      // If source is Portuguese and target is Portuguese, switch target to English
+      return normSource === "pt" ? "en" : "pt";
+    }
+    return normTarget;
+  }
+
+  if (typeof window !== "undefined") {
+    window.evaluateSmartTargetSwitch = evaluateSmartTargetSwitch;
+    window.normalizeLanguageCode = normalizeLanguageCode;
+  }
+
   function getStoredSourceLang() {
     try {
       return localStorage.getItem(STORAGE_KEY_SOURCE_LANG) || "auto";
@@ -892,9 +929,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Hide language selectors by default until the user clicks Translate
+  // Ensure language selector group remains visible in the toolbar before translating
   if (langSelectorGroup) {
-    langSelectorGroup.classList.add("hidden");
+    langSelectorGroup.classList.remove("hidden");
   }
 
   // =========================================================================
@@ -965,15 +1002,67 @@ window.addEventListener("DOMContentLoaded", async () => {
           return;
         }
 
-        const selectedTargetLang = targetLangSelect ? targetLangSelect.value : getStoredTargetLang();
+        let selectedTargetLang = targetLangSelect ? targetLangSelect.value : getStoredTargetLang();
         const selectedSourceLang = sourceLangSelect ? sourceLangSelect.value : "auto";
 
         // 2. Invoke translation command
-        const translatedBoxes = await window.__TAURI__.core.invoke("translate_on_screen", {
+        let translatedBoxes = await window.__TAURI__.core.invoke("translate_on_screen", {
           boxes: flatBoxes,
           targetLang: selectedTargetLang,
           sourceLang: selectedSourceLang,
         });
+
+        // Safely unpack enriched response or legacy array
+        let rawBoxes = Array.isArray(translatedBoxes) ? translatedBoxes : (translatedBoxes?.boxes || []);
+        const detectedLang = translatedBoxes?.detected_source_lang || (Array.isArray(translatedBoxes) ? translatedBoxes[0]?.detected_source_lang : null) || null;
+
+        // Auto-detection & Smart Target Switching
+        if (detectedLang) {
+          const normDetected = normalizeLanguageCode(detectedLang);
+
+          // Update UI badge or source dropdown with detected language
+          if (sourceLangSelect) {
+            const autoOption = (typeof sourceLangSelect.querySelector === "function")
+              ? sourceLangSelect.querySelector('option[value="auto"]')
+              : (sourceLangSelect.options ? Array.from(sourceLangSelect.options).find((o) => o.value === "auto") : null);
+            if (autoOption) {
+              autoOption.text = `Auto Detect (${normDetected.toUpperCase()})`;
+              autoOption.textContent = `Auto Detect (${normDetected.toUpperCase()})`;
+            }
+            sourceLangSelect.title = `Source Language (Detected: ${normDetected.toUpperCase()})`;
+          }
+          if (langSelectorGroup) {
+            langSelectorGroup.title = `Language Translation Pair (Detected: ${normDetected.toUpperCase()})`;
+          }
+
+          // If detected source matches target language, automatically switch target to avoid no-op translation
+          const effectiveTarget = evaluateSmartTargetSwitch(normDetected, selectedTargetLang);
+          if (effectiveTarget && effectiveTarget !== selectedTargetLang) {
+            selectedTargetLang = effectiveTarget;
+            if (targetLangSelect) {
+              targetLangSelect.value = effectiveTarget;
+              try {
+                localStorage.setItem(STORAGE_KEY_TARGET_LANG, effectiveTarget);
+              } catch (_) {}
+              updateTranslateButtonTitle();
+            }
+
+            // Re-invoke translation with the switched target language so user receives translated content
+            try {
+              const retranslated = await window.__TAURI__.core.invoke("translate_on_screen", {
+                boxes: flatBoxes,
+                targetLang: effectiveTarget,
+                sourceLang: selectedSourceLang,
+              });
+              if (retranslated) {
+                translatedBoxes = retranslated;
+                rawBoxes = Array.isArray(translatedBoxes) ? translatedBoxes : (translatedBoxes?.boxes || []);
+              }
+            } catch (reErr) {
+              console.warn("Smart switch re-translation error, using initial translation:", reErr);
+            }
+          }
+        }
 
         // Snapshot current selection rect to prevent stale rendering if user modifies crop
         const rectSnapshot = { ...currentRect };
@@ -990,7 +1079,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           const scaleX = rectSnapshot.w / realW;
           const scaleY = rectSnapshot.h / realH;
 
-          const mappedBoxes = (translatedBoxes || []).map((b) => ({
+          const mappedBoxes = (rawBoxes || []).map((b) => ({
             ...b,
             x: rectSnapshot.x + Math.round(b.x * scaleX),
             y: rectSnapshot.y + Math.round(b.y * scaleY),
@@ -1024,7 +1113,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           }
 
           // Store full translated text for the Copy action
-          activeTranslatedText = (translatedBoxes || [])
+          activeTranslatedText = (rawBoxes || [])
             .map((b) => (b.translated_text || b.text || "").trim())
             .filter(Boolean)
             .join("\n");

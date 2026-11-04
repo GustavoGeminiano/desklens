@@ -35,6 +35,23 @@ pub struct OcrLine {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ParagraphBox {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default)]
+    pub line_indices: Vec<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub translated_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub is_paragraph: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct BoundingBox {
     pub text: String,
     pub x: f64,
@@ -53,6 +70,8 @@ pub struct OcrResult {
     pub word_count: usize,
     #[serde(default)]
     pub boxes: Vec<BoundingBox>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paragraphs: Vec<ParagraphBox>,
 }
 
 /// Computes the bounding box enclosing a slice of words (union fallback).
@@ -594,6 +613,402 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
     (lines, full_text, boxes)
 }
 
+/// Concatenates the lines belonging to a paragraph with spaces, properly joining words
+/// across line breaks and dehyphenating words broken by end-of-line hyphens.
+pub fn join_paragraph_lines(lines: &[&str]) -> String {
+    let mut result = String::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if result.is_empty() {
+            result.push_str(trimmed);
+        } else {
+            // Check if result ends with hyphen preceded by alphabetic char (word-break dehyphenation)
+            let ends_with_hyphen = result.ends_with('-')
+                && result[..result.len() - 1]
+                    .chars()
+                    .last()
+                    .map(|c| c.is_alphabetic())
+                    .unwrap_or(false)
+                && trimmed.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false);
+
+            if ends_with_hyphen {
+                result.pop(); // remove trailing '-'
+                result.push_str(trimmed);
+            } else {
+                result.push(' ');
+                result.push_str(trimmed);
+            }
+        }
+    }
+    result
+}
+
+/// Evaluates whether two vertically adjacent lines belong to the same text paragraph.
+pub fn should_merge_lines_into_paragraph(
+    curr_text: &str,
+    curr_x: f64,
+    curr_y: f64,
+    curr_w: f64,
+    curr_h: f64,
+    next_text: &str,
+    next_x: f64,
+    next_y: f64,
+    next_w: f64,
+    next_h: f64,
+    median_line_h: f64,
+    median_pitch: f64,
+    max_column_w: f64,
+) -> bool {
+    let t_curr = curr_text.trim();
+    let t_next = next_text.trim();
+
+    if t_curr.is_empty() || t_next.is_empty() {
+        return false;
+    }
+
+    // 1. Valid dimensions
+    if curr_w <= 0.0 || curr_h <= 0.0 || next_w <= 0.0 || next_h <= 0.0 {
+        return false;
+    }
+
+    // 2. Line height similarity: lines in the same paragraph share consistent font height
+    let min_h = curr_h.min(next_h);
+    let max_h = curr_h.max(next_h);
+    if min_h / max_h < 0.50 {
+        return false;
+    }
+
+    // 3. Vertical pitch & gap
+    let gap_y = next_y - (curr_y + curr_h);
+    let pitch_y = next_y - curr_y;
+    // Disallow non-downward lines or lines with excessive vertical gap (e.g. blank line)
+    if pitch_y <= 0.0 || pitch_y > median_pitch * 1.65 || gap_y > median_line_h * 1.15 {
+        return false;
+    }
+
+    // 4. Horizontal column overlap: lines must be in the same column
+    let left = curr_x.max(next_x);
+    let right = (curr_x + curr_w).min(next_x + next_w);
+    let h_overlap = (right - left).max(0.0);
+    let min_w = curr_w.min(next_w);
+    if min_w <= 0.0 || (h_overlap / min_w) < 0.35 {
+        return false;
+    }
+
+    // Disallow continuous left-edge drift (e.g. staircase lines from adversarial tests)
+    let left_diff = (curr_x - next_x).abs();
+    let is_first_line_indent = curr_x > next_x && (curr_x - next_x) <= 40.0;
+    if left_diff > 16.0 && !is_first_line_indent {
+        return false;
+    }
+
+    // 5. Markup heuristics: HTML/XML tags are UI elements, not prose lines
+    let has_markup = (t_curr.contains('<') && t_curr.contains('>'))
+        || t_curr.ends_with('>')
+        || (t_next.contains('<') && t_next.contains('>'))
+        || t_next.starts_with('<');
+    if has_markup {
+        return false;
+    }
+
+    // 6. Code heuristics: if either line looks like code syntax, do not merge
+    const CODE_SUFFIXES: &[char] = &['{', '}', ';'];
+    if CODE_SUFFIXES.iter().any(|&c| t_curr.ends_with(c)) {
+        return false;
+    }
+    const CODE_PREFIXES: &[&str] = &[
+        "pub fn ", "fn ", "let ", "const ", "import ", "export ", "class ", "def ", "//", "/*", "*/",
+    ];
+    if CODE_PREFIXES.iter().any(|&p| t_curr.starts_with(p) || t_next.starts_with(p)) {
+        return false;
+    }
+
+    // 7. Next line starts with bullet / list item / numbered item -> starts new item
+    let starts_with_bullet = t_next.starts_with('•')
+        || t_next.starts_with('*')
+        || t_next.starts_with('-')
+        || (t_next.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+            && t_next.chars().nth(1).map(|c| c == '.' || c == ')').unwrap_or(false));
+    if starts_with_bullet {
+        return false;
+    }
+
+    // 8. Numbered / list line ending check: lines ending in a digit are labels or list items
+    if t_curr.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        return false;
+    }
+
+    // 9. Title-case check: UI labels, button text, and headings have mostly capitalized words
+    let words_curr: Vec<&str> = t_curr.split_whitespace().collect();
+    let upper_count = words_curr
+        .iter()
+        .filter(|w| w.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
+        .count();
+    if words_curr.len() >= 2 && (upper_count as f64 / words_curr.len() as f64) >= 0.70 {
+        return false;
+    }
+
+    // 10. Check for line continuation:
+    // A. Hyphenated word break: e.g. "desenvolvi-" + "mento"
+    let ends_with_hyphen = t_curr.ends_with('-')
+        && t_curr[..t_curr.len() - 1].chars().last().map(|c| c.is_alphabetic()).unwrap_or(false);
+    if ends_with_hyphen {
+        return true;
+    }
+
+    // B. Terminal punctuation: '!', '?', ':', ';' always terminate a phrase.
+    // Strip trailing whitespace, closing quotes ('"', '\'', '”', '’'), closing brackets (')', ']'),
+    // and trailing emojis/symbols before evaluating terminal punctuation.
+    let is_trailing_decorator = |c: char| {
+        c.is_whitespace()
+            || c == '"'
+            || c == '\''
+            || c == ')'
+            || c == ']'
+            || c == '}'
+            || (!c.is_alphanumeric() && !c.is_ascii_punctuation())
+    };
+    let t_clean = t_curr.trim_end_matches(is_trailing_decorator);
+
+    if t_clean.is_empty() {
+        return false;
+    }
+
+    const HARD_TERMINAL_PUNCT: &[char] = &['!', '?', ':', ';'];
+    if HARD_TERMINAL_PUNCT.iter().any(|&c| t_clean.ends_with(c)) {
+        return false;
+    }
+
+    if t_clean.ends_with('.') {
+        // Allow continuation across '.' if the line has multiple words and fills the column
+        if words_curr.len() >= 4 && max_column_w > 0.0 && curr_w >= max_column_w * 0.70 {
+            return true;
+        }
+        return false;
+    }
+
+    // C. Non-terminal ending in natural prose: genuine wrapped line continuation!
+    true
+}
+
+/// Groups lines into cohesive paragraph blocks using vertical pitch consistency,
+/// horizontal column overlap, and natural textual continuation.
+pub fn group_lines_into_paragraphs(lines: &[OcrLine]) -> Vec<ParagraphBox> {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    // Estimate median line height
+    let mut heights: Vec<f64> = lines.iter().map(|l| l.height).filter(|&h| h > 0.0).collect();
+    heights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_line_h = if !heights.is_empty() {
+        heights[heights.len() / 2].max(8.0)
+    } else {
+        18.0
+    };
+
+    // Line pitch estimate
+    let mut pitches: Vec<f64> = Vec::new();
+    for i in 1..lines.len() {
+        let diff = lines[i].y - lines[i - 1].y;
+        if diff > median_line_h * 0.8 && diff < median_line_h * 2.5 {
+            pitches.push(diff);
+        }
+    }
+    pitches.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_pitch = if !pitches.is_empty() {
+        pitches[pitches.len() / 2]
+    } else {
+        median_line_h * 1.3
+    };
+
+    let max_column_w = lines.iter().map(|l| l.width).fold(0.0f64, f64::max);
+
+    let mut paragraphs: Vec<ParagraphBox> = Vec::new();
+    let mut current_indices: Vec<usize> = vec![0];
+
+    for j in 1..lines.len() {
+        let last_idx = *current_indices.last().unwrap();
+        let curr = &lines[last_idx];
+        let next = &lines[j];
+
+        if should_merge_lines_into_paragraph(
+            &curr.text,
+            curr.x,
+            curr.y,
+            curr.width,
+            curr.height,
+            &next.text,
+            next.x,
+            next.y,
+            next.width,
+            next.height,
+            median_line_h,
+            median_pitch,
+            max_column_w,
+        ) {
+            current_indices.push(j);
+        } else {
+            paragraphs.push(build_paragraph_from_line_indices(lines, &current_indices));
+            current_indices = vec![j];
+        }
+    }
+
+    if !current_indices.is_empty() {
+        paragraphs.push(build_paragraph_from_line_indices(lines, &current_indices));
+    }
+
+    paragraphs
+}
+
+fn build_paragraph_from_line_indices(lines: &[OcrLine], indices: &[usize]) -> ParagraphBox {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut line_texts = Vec::with_capacity(indices.len());
+
+    for &idx in indices {
+        let l = &lines[idx];
+        min_x = min_x.min(l.x);
+        min_y = min_y.min(l.y);
+        max_x = max_x.max(l.x + l.width);
+        max_y = max_y.max(l.y + l.height);
+        line_texts.push(l.text.as_str());
+    }
+
+    let min_x = if min_x.is_finite() { min_x } else { 0.0 };
+    let min_y = if min_y.is_finite() { min_y } else { 0.0 };
+    let width = (max_x - min_x).max(0.0);
+    let height = (max_y - min_y).max(0.0);
+    let text = if indices.len() == 1 {
+        lines[indices[0]].text.clone()
+    } else {
+        join_paragraph_lines(&line_texts)
+    };
+    let is_para = indices.len() > 1;
+
+    ParagraphBox {
+        text,
+        x: min_x,
+        y: min_y,
+        width,
+        height,
+        line_indices: indices.to_vec(),
+        translated_text: None,
+        is_paragraph: Some(is_para),
+    }
+}
+
+/// Groups bounding boxes into cohesive paragraph blocks.
+pub fn group_bounding_boxes_into_paragraphs(boxes: &[BoundingBox]) -> Vec<ParagraphBox> {
+    if boxes.is_empty() {
+        return Vec::new();
+    }
+
+    let mut heights: Vec<f64> = boxes.iter().map(|b| b.height).filter(|&h| h > 0.0).collect();
+    heights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_line_h = if !heights.is_empty() {
+        heights[heights.len() / 2].max(8.0)
+    } else {
+        18.0
+    };
+
+    let mut pitches: Vec<f64> = Vec::new();
+    for i in 1..boxes.len() {
+        let diff = boxes[i].y - boxes[i - 1].y;
+        if diff > median_line_h * 0.8 && diff < median_line_h * 2.5 {
+            pitches.push(diff);
+        }
+    }
+    pitches.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median_pitch = if !pitches.is_empty() {
+        pitches[pitches.len() / 2]
+    } else {
+        median_line_h * 1.3
+    };
+
+    let max_column_w = boxes.iter().map(|b| b.width).fold(0.0f64, f64::max);
+
+    let mut paragraphs: Vec<ParagraphBox> = Vec::new();
+    let mut current_indices: Vec<usize> = vec![0];
+
+    for j in 1..boxes.len() {
+        let last_idx = *current_indices.last().unwrap();
+        let curr = &boxes[last_idx];
+        let next = &boxes[j];
+
+        if should_merge_lines_into_paragraph(
+            &curr.text,
+            curr.x,
+            curr.y,
+            curr.width,
+            curr.height,
+            &next.text,
+            next.x,
+            next.y,
+            next.width,
+            next.height,
+            median_line_h,
+            median_pitch,
+            max_column_w,
+        ) {
+            current_indices.push(j);
+        } else {
+            paragraphs.push(build_paragraph_from_box_indices(boxes, &current_indices));
+            current_indices = vec![j];
+        }
+    }
+
+    if !current_indices.is_empty() {
+        paragraphs.push(build_paragraph_from_box_indices(boxes, &current_indices));
+    }
+
+    paragraphs
+}
+
+fn build_paragraph_from_box_indices(boxes: &[BoundingBox], indices: &[usize]) -> ParagraphBox {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut line_texts = Vec::with_capacity(indices.len());
+
+    for &idx in indices {
+        let b = &boxes[idx];
+        min_x = min_x.min(b.x);
+        min_y = min_y.min(b.y);
+        max_x = max_x.max(b.x + b.width);
+        max_y = max_y.max(b.y + b.height);
+        line_texts.push(b.text.as_str());
+    }
+
+    let min_x = if min_x.is_finite() { min_x } else { 0.0 };
+    let min_y = if min_y.is_finite() { min_y } else { 0.0 };
+    let width = (max_x - min_x).max(0.0);
+    let height = (max_y - min_y).max(0.0);
+    let text = if indices.len() == 1 {
+        boxes[indices[0]].text.clone()
+    } else {
+        join_paragraph_lines(&line_texts)
+    };
+    let is_para = indices.len() > 1;
+
+    ParagraphBox {
+        text,
+        x: min_x,
+        y: min_y,
+        width,
+        height,
+        line_indices: indices.to_vec(),
+        translated_text: None,
+        is_paragraph: Some(is_para),
+    }
+}
+
 /// Parses Tesseract TSV output into a strongly typed OcrResult with line and word bounding boxes.
 pub fn parse_tesseract_tsv(tsv_text: &str) -> OcrResult {
     parse_tesseract_tsv_scaled(tsv_text, 1.0)
@@ -733,12 +1148,14 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
     }
 
     let (lines, full_text, boxes) = coalesce_and_structure_lines(raw_lines);
+    let paragraphs = group_lines_into_paragraphs(&lines);
 
     OcrResult {
         full_text,
         lines,
         word_count: total_words,
         boxes,
+        paragraphs,
     }
 }
 
@@ -818,6 +1235,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
     }
 
     let (lines, full_text, boxes) = coalesce_and_structure_lines(raw_lines);
+    let paragraphs = group_lines_into_paragraphs(&lines);
     let total_words = lines.iter().map(|l| l.words.len()).sum();
 
     Ok(OcrResult {
@@ -825,6 +1243,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
         lines,
         word_count: total_words,
         boxes,
+        paragraphs,
     })
 }
 
@@ -1012,5 +1431,98 @@ mod tests {
         };
         let json_trans = serde_json::to_string(&box_with_trans).unwrap();
         assert!(json_trans.contains("\"translated_text\":\"Olá\""), "JSON should contain translated_text: {}", json_trans);
+    }
+
+    #[test]
+    fn test_join_paragraph_lines_dehyphenation() {
+        // Hyphenated word break
+        let lines = ["Durante o desenvolvi-", "mento de software ágil,"];
+        let joined = join_paragraph_lines(&lines);
+        assert_eq!(joined, "Durante o desenvolvimento de software ágil,");
+
+        // Normal lines without hyphen
+        let lines_normal = ["Primeira linha de texto", "segunda linha continua."];
+        assert_eq!(join_paragraph_lines(&lines_normal), "Primeira linha de texto segunda linha continua.");
+
+        // Dash with space (punctuation dash, not word hyphen)
+        let lines_dash = ["Item A - ", "continuação do item"];
+        assert_eq!(join_paragraph_lines(&lines_dash), "Item A - continuação do item");
+    }
+
+    #[test]
+    fn test_group_lines_into_paragraphs_reproduction() {
+        // Ground truth reproduction of Image 2 (user issue)
+        let l1 = OcrLine {
+            text: "Lembrando que, se você ficou com alguma dúvida ou percebeu que algum assunto não foi totalmente explicado, não se".to_string(),
+            x: 22.0,
+            y: 14.0,
+            width: 968.0,
+            height: 18.0,
+            words: vec![],
+        };
+        let l2 = OcrLine {
+            text: "preocupe! Sinta-se à vontade para conversar com seu professor e esclarecer tudo que for necessário. Fazer perguntas".to_string(),
+            x: 22.0,
+            y: 40.0,
+            width: 968.0,
+            height: 18.0,
+            words: vec![],
+        };
+        let l3 = OcrLine {
+            text: "faz parte do processo de aprendizagem.".to_string(),
+            x: 21.0,
+            y: 65.0,
+            width: 324.0,
+            height: 18.0,
+            words: vec![],
+        };
+
+        let paragraphs = group_lines_into_paragraphs(&[l1, l2, l3]);
+        assert_eq!(paragraphs.len(), 1, "The 3 wrapped lines must form exactly 1 paragraph");
+        let p = &paragraphs[0];
+        assert_eq!(p.x, 21.0);
+        assert_eq!(p.y, 14.0);
+        assert_eq!(p.width, 969.0);
+        assert_eq!(p.height, 69.0);
+        assert_eq!(p.line_indices, vec![0, 1, 2]);
+        assert_eq!(p.is_paragraph, Some(true));
+        assert!(p.text.starts_with("Lembrando que"));
+        assert!(p.text.contains("não se preocupe!"));
+        assert!(p.text.contains("Fazer perguntas faz parte"));
+        assert!(p.text.ends_with("processo de aprendizagem."));
+    }
+
+    #[test]
+    fn test_group_bounding_boxes_separate_paragraphs() {
+        // Two separate paragraphs separated by a vertical blank gap
+        let b1 = BoundingBox {
+            text: "Este é o primeiro parágrafo de teste.".to_string(),
+            x: 10.0,
+            y: 10.0,
+            width: 300.0,
+            height: 20.0,
+            translated_text: None,
+        };
+        let b2 = BoundingBox {
+            text: "Ele termina aqui com ponto final.".to_string(),
+            x: 10.0,
+            y: 35.0,
+            width: 250.0,
+            height: 20.0,
+            translated_text: None,
+        };
+        let b3 = BoundingBox {
+            text: "Este é o segundo parágrafo após um espaço.".to_string(),
+            x: 10.0,
+            y: 90.0, // Large vertical gap (pitch = 55px vs normal 25px)
+            width: 310.0,
+            height: 20.0,
+            translated_text: None,
+        };
+
+        let paragraphs = group_bounding_boxes_into_paragraphs(&[b1, b2, b3]);
+        assert_eq!(paragraphs.len(), 2, "Should separate into 2 paragraphs across vertical gap");
+        assert_eq!(paragraphs[0].line_indices, vec![0, 1]);
+        assert_eq!(paragraphs[1].line_indices, vec![2]);
     }
 }
