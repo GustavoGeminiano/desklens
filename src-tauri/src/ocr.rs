@@ -134,6 +134,8 @@ pub fn invert_image(image: &image::RgbaImage) -> image::RgbaImage {
 }
 
 /// Enhances contrast of an image by stretching the dynamic range of pixel luminances.
+/// Scales luminance proportionally across RGB channels to preserve chromaticity and syntax colors,
+/// while mapping background to clean white.
 pub fn enhance_contrast(image: &mut image::RgbaImage) {
     let mut min_luma = 255u8;
     let mut max_luma = 0u8;
@@ -149,9 +151,20 @@ pub fn enhance_contrast(image: &mut image::RgbaImage) {
         let range = (max_luma - min_luma) as f32;
         for pixel in image.pixels_mut() {
             if pixel[3] > 0 {
-                for c in 0..3 {
-                    let val = (pixel[c].saturating_sub(min_luma) as f32 / range * 255.0).clamp(0.0, 255.0);
-                    pixel[c] = val as u8;
+                let luma = ((pixel[0] as u32 * 299 + pixel[1] as u32 * 587 + pixel[2] as u32 * 114) / 1000) as f32;
+                if luma >= (max_luma as f32 - 6.0) {
+                    pixel[0] = 255;
+                    pixel[1] = 255;
+                    pixel[2] = 255;
+                } else {
+                    let norm = (luma - min_luma as f32).max(0.0) / range;
+                    let target_luma = norm.powf(1.15) * 255.0;
+                    if luma > 0.0 {
+                        let k = (target_luma / luma).min(1.0);
+                        pixel[0] = ((pixel[0] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                        pixel[1] = ((pixel[1] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                        pixel[2] = ((pixel[2] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                    }
                 }
             }
         }
@@ -160,8 +173,8 @@ pub fn enhance_contrast(image: &mut image::RgbaImage) {
 
 /// Preprocesses screenshot crop for optimal code OCR precision:
 /// - Inverts dark theme images to black-on-white.
-/// - Enhances contrast across color spectrum.
-/// - Upscales small screen text (font height 8-16px) by 2x using Lanczos3 interpolation.
+/// - Enhances contrast across color spectrum while preserving syntax highlight chromaticity.
+/// - Upscales small screen text (font height 8-16px) by 2x using crisp Nearest-neighbor interpolation.
 /// - Restricts dimensions to fit within WinRT OCR max size (2500px).
 pub fn preprocess_for_ocr(image: &image::RgbaImage) -> (image::RgbaImage, f64) {
     let (w, h) = (image.width(), image.height());
@@ -274,22 +287,339 @@ pub fn normalize_code_punctuation(text: &str) -> String {
 
     // 7. Simplify OCR quotation mark doubling and mismatched quote artifacts
     s = s.replace("'\"", "'").replace("\"'", "'");
+    if s.ends_with("l')")
+        || s.ends_with("'l)")
+        || s.ends_with("l\")")
+        || s.ends_with("\"l)")
+        || s.ends_with("1')")
+        || s.ends_with("'1)")
+    {
+        s = format!("{}\")", &s[..s.len() - 3]);
+    }
     if s.starts_with('"') && (s.ends_with("':") || s.ends_with("',") || s.ends_with("')")) {
         s = format!("'{}", &s[1..]);
+    }
+
+    // 8. Programming keywords and OCR letter substitution normalizations
+    if s == "eIse:" || s == "eise:" || s == "Ise:" || s == "élse:" || s == "Else:" {
+        s = "else:".to_string();
+    } else if s == "eIse" || s == "eise" || s == "élse" {
+        s = "else".to_string();
+    } else if s == "faIse" || s == "faise" {
+        s = "false".to_string();
+    } else if s == "nuII" || s == "nuii" {
+        s = "null".to_string();
+    } else if s == "whiIe" {
+        s = "while".to_string();
+    } else if s == "whiIe:" {
+        s = "while:".to_string();
+    } else if s == "cIass" {
+        s = "class".to_string();
     }
 
     s
 }
 
+/// Returns true if the token is a recognized programming operator, symbol, or punctuation.
+pub fn is_code_op(s: &str) -> bool {
+    matches!(
+        s.trim(),
+        "===" | "!==" | ">>>"
+            | "==" | "!=" | "<=" | ">=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&&" | "||"
+            | "->" | "=>" | "::" | ".." | "<<" | ">>" | "++" | "--" | "**" | "//"
+            | "=" | "+" | "-" | "*" | "/" | "%" | "<" | ">" | "!" | "&" | "|" | "^"
+            | "~" | ":" | ";" | "?" | "." | "," | "(" | ")" | "[" | "]" | "{" | "}"
+    )
+}
+
+/// Returns true if the token is a recognized programming keyword (ignoring trailing syntax delimiters like ':', ';', ',').
+pub fn is_code_keyword(s: &str) -> bool {
+    let clean = s.trim().trim_end_matches([':', ';', ',']);
+    matches!(
+        clean.to_ascii_lowercase().as_str(),
+        "if" | "in" | "is" | "fn" | "as" | "do" | "to" | "go" | "or" | "for" | "def" | "let"
+            | "var" | "val" | "try" | "mut" | "ref" | "use" | "pub" | "mod" | "new" | "get"
+            | "set" | "else" | "elif" | "case" | "loop" | "end" | "nil" | "not" | "and"
+            | "pass" | "with" | "from" | "return" | "class" | "import" | "while" | "yield"
+            | "await" | "async" | "break" | "continue" | "struct" | "enum" | "impl" | "type"
+            | "trait" | "const" | "static" | "where" | "super" | "self" | "crate" | "except"
+            | "finally" | "match"
+    )
+}
+
+/// Segments composite or glued code tokens into fine-grained tokens with tightly wrapped, non-overlapping bounding boxes.
+pub fn segment_code_tokens(words: Vec<OcrWord>) -> Vec<OcrWord> {
+    let mut intermediate: Vec<OcrWord> = Vec::with_capacity(words.len() * 2);
+
+    // 1. Coalesce adjacent keyword fragment splits like 'e' + 'Ise:' -> 'else:'
+    let mut i = 0;
+    while i < words.len() {
+        if i + 1 < words.len() {
+            let w1_text = words[i].text.to_lowercase();
+            let w2_text = words[i + 1].text.to_lowercase();
+            if (w1_text == "e"
+                && (w2_text == "ise:"
+                    || w2_text == "lse:"
+                    || w2_text == "ise"
+                    || w2_text == "lse"
+                    || w2_text == "else:"
+                    || w2_text == "else"))
+                || (w1_text == "el" && (w2_text == "se:" || w2_text == "se"))
+            {
+                let gap = words[i + 1].x - (words[i].x + words[i].width);
+                if gap <= 15.0 {
+                    let combined_w = (words[i + 1].x + words[i + 1].width) - words[i].x;
+                    intermediate.push(OcrWord {
+                        text: if w2_text.ends_with(':') { "else:".to_string() } else { "else".to_string() },
+                        x: words[i].x,
+                        y: words[i].y.min(words[i + 1].y),
+                        width: combined_w,
+                        height: words[i].height.max(words[i + 1].height),
+                        confidence: (words[i].confidence + words[i + 1].confidence) * 0.5,
+                    });
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+        intermediate.push(words[i].clone());
+        i += 1;
+    }
+
+    // 2. Segment each word into tokens if glued
+    let mut result = Vec::with_capacity(intermediate.len() * 2);
+    for word in intermediate {
+        let segments = segment_single_code_word(&word);
+        result.extend(segments);
+    }
+
+    result
+}
+
+fn segment_single_code_word(word: &OcrWord) -> Vec<OcrWord> {
+    let text = &word.text;
+    if text.is_empty() {
+        return vec![word.clone()];
+    }
+
+    // Do not split already recognized single or double character operators
+    if is_code_op(text) {
+        return vec![word.clone()];
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    if n <= 1 {
+        return vec![word.clone()];
+    }
+
+    let mut split_points: Vec<usize> = Vec::new();
+
+    // Case A: Keyword prefix followed by a single-character identifier or operator/symbol
+    const KEYWORDS: &[&str] = &[
+        "for", "if", "in", "is", "def", "let", "var", "fn", "not", "and", "or", "as", "do",
+        "while", "else", "return", "class", "import", "from", "try", "except", "with", "yield",
+        "await", "async",
+    ];
+    for &kw in KEYWORDS {
+        if text.starts_with(kw) && text.len() > kw.len() {
+            let kw_len = kw.chars().count();
+            let tail: Vec<char> = chars[kw_len..].to_vec();
+            // Single character identifier e.g. 'fori' -> 'for', 'i'
+            if tail.len() == 1 && tail[0].is_alphabetic() {
+                split_points.push(kw_len);
+                break;
+            }
+            // Identifier char followed by operator: e.g. 'ifi%2' -> 'if', 'i'
+            if tail.len() >= 2
+                && tail[0].is_alphabetic()
+                && matches!(
+                    tail[1],
+                    '(' | '[' | '{' | '%' | '=' | '!' | '<' | '>' | '&' | '|' | '+' | '-' | '*' | '/' | ':' | ';'
+                )
+            {
+                split_points.push(kw_len);
+                split_points.push(kw_len + 1);
+                break;
+            }
+            // Followed by operator or parenthesis e.g. 'for(' or 'if('
+            if let Some(&first_ch) = tail.first() {
+                if matches!(first_ch, '(' | '[' | '{' | '%' | '=' | '!' | '<' | '>' | '&' | '|') {
+                    split_points.push(kw_len);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Case B: Function call glued to string literal: e.g. 'print(f"%i' -> split before '"'
+    if let Some(quote_idx) = chars.iter().position(|&c| c == '"' || c == '\'') {
+        if quote_idx > 0 && quote_idx < n {
+            let prev = chars[quote_idx - 1];
+            if prev == '(' || prev == '[' || prev == '{' || prev == 'f' || prev == 'r' || prev == 'b'
+                || prev == '=' || prev == ':' || prev == ','
+            {
+                if !split_points.contains(&quote_idx) {
+                    split_points.push(quote_idx);
+                }
+            }
+        }
+    }
+
+    // Case B2: Opening delimiter glued at start of word (e.g. '(i', '(x', '[0')
+    if (chars[0] == '(' || chars[0] == '[' || chars[0] == '{')
+        && !chars.contains(&')')
+        && !chars.contains(&']')
+        && !chars.contains(&'}')
+    {
+        if !split_points.contains(&1) {
+            split_points.push(1);
+        }
+    }
+
+    // Case B3: Unmatched closing delimiter and statement delimiter (e.g. '0):', '1):', '):')
+    // Function calls with argument lists like 'range(10):' contain alphabetic chars before '(' and are preserved.
+    if !chars.contains(&'(') && !chars.contains(&'[') && !chars.contains(&'{') {
+        for (ci, &c) in chars.iter().enumerate() {
+            if c == ')' || c == ']' || c == '}' {
+                if ci > 0 && chars[ci - 1].is_alphanumeric() && !split_points.contains(&ci) {
+                    split_points.push(ci);
+                }
+                if ci + 1 < n
+                    && (chars[ci + 1] == ':' || chars[ci + 1] == ';' || chars[ci + 1] == ',')
+                    && !split_points.contains(&(ci + 1))
+                {
+                    split_points.push(ci + 1);
+                }
+            }
+        }
+    }
+
+    // Case C: Embedded operators between alphanumerics (do not split operators inside string quotes)
+    let mut in_quote: Option<char> = None;
+    let mut idx = 0;
+    while idx < n {
+        let c = chars[idx];
+        if in_quote.is_none() && (c == '"' || c == '\'') {
+            in_quote = Some(c);
+            idx += 1;
+            continue;
+        } else if in_quote == Some(c) {
+            in_quote = None;
+            idx += 1;
+            continue;
+        }
+
+        if in_quote.is_some() {
+            idx += 1;
+            continue;
+        }
+
+        // 3-char operators: ===, !==, >>>
+        if idx + 2 < n {
+            let three_char: String = chars[idx..=idx + 2].iter().collect();
+            if matches!(three_char.as_str(), "===" | "!==" | ">>>") {
+                if idx > 0 && !split_points.contains(&idx) {
+                    split_points.push(idx);
+                }
+                if idx + 3 < n && !split_points.contains(&(idx + 3)) {
+                    split_points.push(idx + 3);
+                }
+                idx += 3;
+                continue;
+            }
+        }
+
+        // Multi-char operators: ==, !=, <=, >=, +=, -=, *=, /=, %=, &&, ||, ->, =>, ::, .., <<, >>, ++, --, **, //
+        if idx + 1 < n {
+            let two_char: String = chars[idx..=idx + 1].iter().collect();
+            if matches!(
+                two_char.as_str(),
+                "==" | "!=" | "<=" | ">=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&&" | "||"
+                    | "->" | "=>" | "::" | ".." | "<<" | ">>" | "++" | "--" | "**" | "//"
+            ) {
+                if idx > 0 && !split_points.contains(&idx) {
+                    split_points.push(idx);
+                }
+                if idx + 2 < n && !split_points.contains(&(idx + 2)) {
+                    split_points.push(idx + 2);
+                }
+                idx += 2;
+                continue;
+            }
+        }
+
+        // Single char operators: %, =, +, -, *, /, <, >, !, &, |, ^, ~, ?, ;, ,
+        let c = chars[idx];
+        if matches!(c, '%' | '=' | '+' | '-' | '*' | '/' | '<' | '>' | '!' | '&' | '|' | '^' | '~' | '?' | ';' | ',') {
+            if idx > 0 && !split_points.contains(&idx) {
+                split_points.push(idx);
+            }
+            if idx + 1 < n && !split_points.contains(&(idx + 1)) {
+                split_points.push(idx + 1);
+            }
+        } else if c == ':' && idx > 0 && chars[idx - 1].is_numeric() {
+            // e.g. '0:' -> split between '0' and ':'
+            if !split_points.contains(&idx) {
+                split_points.push(idx);
+            }
+        }
+
+        idx += 1;
+    }
+
+    if split_points.is_empty() {
+        return vec![word.clone()];
+    }
+
+    split_at_multiple_offsets(word, &split_points)
+}
+
+fn split_at_multiple_offsets(word: &OcrWord, split_points: &[usize]) -> Vec<OcrWord> {
+    let chars: Vec<char> = word.text.chars().collect();
+    let total_chars = chars.len() as f64;
+    let char_w = word.width / total_chars;
+
+    let mut indices = vec![0];
+    for &sp in split_points {
+        if sp > 0 && sp < chars.len() && !indices.contains(&sp) {
+            indices.push(sp);
+        }
+    }
+    indices.sort_unstable();
+    indices.push(chars.len());
+
+    let mut result = Vec::new();
+    for w in indices.windows(2) {
+        let start = w[0];
+        let end = w[1];
+        let sub_text: String = chars[start..end].iter().collect();
+        let sub_len = (end - start) as f64;
+        let sub_x = word.x + char_w * start as f64;
+        let sub_w = char_w * sub_len;
+        result.push(OcrWord {
+            text: sub_text,
+            x: sub_x,
+            y: word.y,
+            width: sub_w,
+            height: word.height,
+            confidence: word.confidence,
+        });
+    }
+
+    result
+}
+
 /// Coalesces raw OCR lines (resolving line-split artifacts), preserves code indentation,
 /// reconstructs token spacing, detects blank lines, and builds structured full text and bounding boxes.
 pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine>, String, Vec<BoundingBox>) {
-    // 1. Normalize punctuation on all words
+    // 1. Normalize punctuation on all words and segment glued code tokens
     for line in &mut raw_lines {
         for word in &mut line.words {
             word.text = normalize_code_punctuation(&word.text);
         }
         line.words.retain(|w| !w.text.trim().is_empty());
+        line.words = segment_code_tokens(line.words.drain(..).collect());
     }
     raw_lines.retain(|l| !l.words.is_empty());
 
@@ -383,9 +713,17 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
                 }
 
                 let horizontal_gap = line_gap.min(word_gap);
-                // Cap max_allowed_gap at 35.0px so headlines/text never merge across column gutters (>= 40px),
-                // while normal words in a line (< 25-30px apart) coalesce properly.
-                let max_allowed_gap = (min_h * 1.5).max(char_w * 2.5).min(35.0);
+                // Cap max_allowed_gap at 35.0px for substantial multi-word column blocks so headlines/text
+                // never merge across column gutters (>= 40px), while intra-line tokens/operators coalesce properly.
+                let is_multi_word_column = lines[i].words.len() >= 2
+                    && lines[j].words.len() >= 2
+                    && lines[i].width >= 70.0
+                    && lines[j].width >= 70.0;
+                let max_allowed_gap = if is_multi_word_column {
+                    (min_h * 1.5).max(char_w * 2.5).min(35.0)
+                } else {
+                    (min_h * 2.5).max(char_w * 4.5).min(75.0)
+                };
 
                 let is_same_line = horizontal_gap <= max_allowed_gap + 1e-4
                     && !words_collide_horizontally(&lines[i].words, &lines[j].words);
@@ -440,8 +778,15 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
         true
     });
 
-    // 3. Sort lines top-to-bottom by y coordinate
-    lines.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal));
+    // 3. Sort lines top-to-bottom by y coordinate, breaking ties or near-ties by x coordinate (left-to-right)
+    lines.sort_by(|a, b| {
+        let diff_y = a.y - b.y;
+        if diff_y.abs() > 4.0 {
+            a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal)
+        } else {
+            a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal)
+        }
+    });
 
     // 4. Estimate character width and median line height across code block
     let mut total_w = 0.0;
@@ -1075,16 +1420,27 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
 
             // 4. Filter vertical margin artifacts: discard tall narrow boxes from paper folds / margins.
             // Do NOT drop single narrow characters like 'I', '1', 'l', 'i', '!', '[', ']', '|', '/', '\\'
-            // even if their aspect ratio exceeds 2.8, unless height is excessively tall (e.g., height > 40.0 && width < 15.0).
+            // or programming operators like '==', '!=', '<=', '>=', '%', '=', '+', '-', '*', etc.,
+            // or programming keywords like 'for', 'if', 'else:', 'try:', 'def', 'in', etc.
+            let is_code_operator = is_code_op(&word_text);
+            let is_keyword = is_code_keyword(&word_text);
             let is_single_narrow_char = if char_count == 1 {
                 let ch = word_text.chars().next().unwrap_or(' ');
-                ch.is_alphanumeric() || matches!(ch, '!' | '[' | ']' | '|' | '/' | '\\' | '(' | ')' | '{' | '}' | ':' | ';' | '?')
+                ch.is_alphanumeric()
+                    || matches!(
+                        ch,
+                        '!' | '[' | ']' | '|' | '/' | '\\' | '(' | ')' | '{' | '}'
+                            | ':' | ';' | '?' | '%' | '=' | '+' | '-' | '*' | '<' | '>'
+                            | '&' | '^' | '~' | '\'' | '"' | ',' | '.' | '_' | '@' | '$' | '#'
+                    )
             } else {
                 false
             };
 
             let is_excessive_tall_sliver = height > 40.0 && width < 15.0;
-            let should_filter_aspect = if is_excessive_tall_sliver {
+            let should_filter_aspect = if is_code_operator || (is_keyword && height <= 40.0) {
+                false
+            } else if is_excessive_tall_sliver {
                 true
             } else if char_count >= 2 && char_count <= 3 {
                 true
@@ -1159,6 +1515,7 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
     }
 }
 
+
 #[cfg(target_os = "windows")]
 pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String> {
     use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
@@ -1188,8 +1545,20 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
         .CopyFromBuffer(&buffer)
         .map_err(|e| format!("Failed to copy pixels to SoftwareBitmap: {e}"))?;
 
-    let engine = OcrEngine::TryCreateFromUserProfileLanguages()
-        .map_err(|e| format!("Failed to initialize Windows OCR Engine: {e}"))?;
+    use windows::Globalization::Language;
+    let engine = if let Ok(en_lang) = Language::CreateLanguage(&windows::core::HSTRING::from("en-US")) {
+        if OcrEngine::IsLanguageSupported(&en_lang).unwrap_or(false) {
+            OcrEngine::TryCreateFromLanguage(&en_lang)
+                .or_else(|_| OcrEngine::TryCreateFromUserProfileLanguages())
+                .map_err(|e| format!("Failed to create OCR engine: {e}"))?
+        } else {
+            OcrEngine::TryCreateFromUserProfileLanguages()
+                .map_err(|e| format!("Failed to initialize Windows OCR Engine: {e}"))?
+        }
+    } else {
+        OcrEngine::TryCreateFromUserProfileLanguages()
+            .map_err(|e| format!("Failed to initialize Windows OCR Engine: {e}"))?
+    };
 
     let ocr_result = engine
         .RecognizeAsync(&software_bitmap)
@@ -1232,6 +1601,10 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                 });
             }
         }
+    }
+
+    for (idx, rl) in raw_lines.iter().enumerate() {
+        eprintln!("RAW LINE {}: y={} h={} words={:?}", idx, rl.y, rl.height, rl.words.iter().map(|w| (&w.text, w.x, w.y)).collect::<Vec<_>>());
     }
 
     let (lines, full_text, boxes) = coalesce_and_structure_lines(raw_lines);

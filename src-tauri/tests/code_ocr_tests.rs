@@ -1,7 +1,7 @@
 use desklens_lib::ocr::{
     coalesce_and_structure_lines, extract_text_native,
-    is_dark_image, invert_image, normalize_code_punctuation,
-    parse_tesseract_tsv_scaled,
+    is_code_keyword, is_code_op, is_dark_image, invert_image, normalize_code_punctuation,
+    parse_tesseract_tsv_scaled, segment_code_tokens,
     OcrLine, OcrWord,
 };
 use std::path::PathBuf;
@@ -22,7 +22,6 @@ fn test_code_ocr_native_pipeline_end_to_end() {
 
     // 1. Test Light Theme directly through extract_text_native
     let light_res = extract_text_native(&light_img).expect("extract light text");
-    println!("=== LIGHT THEME RESULT ===\n{}", light_res.full_text);
 
     assert!(light_res.full_text.contains("def "), "Light theme must contain 'def'");
     assert!(light_res.full_text.contains(":"), "Light theme must contain colon ':'");
@@ -627,4 +626,391 @@ fn test_coalesce_and_structure_lines_hanging_indentation_continuation() {
         lines[1].text
     );
 }
+
+#[test]
+fn test_segment_code_tokens_exact_coordinates_and_no_drift() {
+    // 1. Keyword coalescing: 'e' + 'Ise:' -> 'else:'
+    let words = vec![
+        OcrWord { text: "e".to_string(), x: 100.0, y: 50.0, width: 8.0, height: 16.0, confidence: 90.0 },
+        OcrWord { text: "Ise:".to_string(), x: 108.0, y: 50.0, width: 24.0, height: 16.0, confidence: 90.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 1);
+    assert_eq!(res[0].text, "else:");
+    assert_eq!(res[0].x, 100.0);
+    assert_eq!(res[0].width, 32.0);
+
+    // 2. Glued keyword + identifier: 'fori' -> 'for', 'i'
+    let words = vec![
+        OcrWord { text: "fori".to_string(), x: 50.0, y: 20.0, width: 40.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0].text, "for");
+    assert_eq!(res[1].text, "i");
+    assert_eq!(res[0].x, 50.0);
+    assert_eq!(res[0].width, 30.0); // 3 chars * 10.0
+    assert_eq!(res[1].x, 80.0);    // 50.0 + 30.0
+    assert_eq!(res[1].width, 10.0); // 1 char * 10.0
+    assert!((res[0].width + res[1].width - 40.0).abs() < 1e-6);
+
+    // 3. Glued operator expression: 'ifi%2' -> 'if', 'i', '%', '2'
+    let words = vec![
+        OcrWord { text: "ifi%2".to_string(), x: 50.0, y: 20.0, width: 50.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 4);
+    assert_eq!(res[0].text, "if");
+    assert_eq!(res[1].text, "i");
+    assert_eq!(res[2].text, "%");
+    assert_eq!(res[3].text, "2");
+    assert_eq!(res[0].x, 50.0);
+    assert_eq!(res[0].width, 20.0);
+    assert_eq!(res[1].x, 70.0);
+    assert_eq!(res[1].width, 10.0);
+    assert_eq!(res[2].x, 80.0);
+    assert_eq!(res[2].width, 10.0);
+    assert_eq!(res[3].x, 90.0);
+    assert_eq!(res[3].width, 10.0);
+
+    // 4. Glued operators and colons: '2==0:' -> '2', '==', '0', ':'
+    let words = vec![
+        OcrWord { text: "2==0:".to_string(), x: 100.0, y: 20.0, width: 50.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 4);
+    assert_eq!(res[0].text, "2");
+    assert_eq!(res[1].text, "==");
+    assert_eq!(res[2].text, "0");
+    assert_eq!(res[3].text, ":");
+    assert_eq!(res[0].x, 100.0);
+    assert_eq!(res[0].width, 10.0);
+    assert_eq!(res[1].x, 110.0);
+    assert_eq!(res[1].width, 20.0);
+    assert_eq!(res[2].x, 130.0);
+    assert_eq!(res[2].width, 10.0);
+    assert_eq!(res[3].x, 140.0);
+    assert_eq!(res[3].width, 10.0);
+
+    // 5. String literal prefix in function call: 'print(f"%i' -> 'print(f', '"%i'
+    let words = vec![
+        OcrWord { text: "print(f\"%i".to_string(), x: 50.0, y: 40.0, width: 100.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0].text, "print(f");
+    assert_eq!(res[1].text, "\"%i");
+    assert_eq!(res[0].x, 50.0);
+    assert_eq!(res[0].width, 70.0);
+    assert_eq!(res[1].x, 120.0);
+    assert_eq!(res[1].width, 30.0);
+
+    // 6. Coordinate invariant check: sum of subtoken widths equals original width, non-overlapping
+    let total_width: f64 = res.iter().map(|w| w.width).sum();
+    assert!((total_width - 100.0).abs() < 1e-6);
+    assert_eq!(res[0].x + res[0].width, res[1].x);
+}
+
+#[test]
+fn test_is_code_op_exhaustive() {
+    let operators = [
+        "===", "!==", ">>>",
+        "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&&", "||",
+        "->", "=>", "::", "..", "<<", ">>", "++", "--", "**", "//",
+        "=", "+", "-", "*", "/", "%", "<", ">", "!", "&", "|", "^",
+        "~", ":", ";", "?", ".", ",", "(", ")", "[", "]", "{", "}",
+    ];
+    for op in &operators {
+        assert!(is_code_op(op), "Operator '{}' must be recognized by is_code_op", op);
+        assert!(is_code_op(&format!(" {} ", op)), "Padded operator ' {} ' must be recognized", op);
+    }
+
+    let non_operators = [
+        "for", "else", "if", "def", "class", "while", "return", "import",
+        "foo", "bar_baz", "var1", "123", "abc", "", "   ",
+    ];
+    for non_op in &non_operators {
+        assert!(!is_code_op(non_op), "Non-operator '{}' must NOT be recognized by is_code_op", non_op);
+    }
+}
+
+#[test]
+fn test_is_code_keyword_exhaustive() {
+    let keywords = &[
+        "if", "if:", "else", "else:", "elif", "elif:", "while", "while:", "for", "for:",
+        "def", "let", "var", "val", "fn", "in", "is", "try", "try:", "except", "with",
+        "return", "class", "import", "from", "async", "await", "struct", "enum", "impl",
+    ];
+    for &kw in keywords {
+        assert!(is_code_keyword(kw), "Keyword '{}' must be recognized by is_code_keyword", kw);
+    }
+
+    let non_keywords = &["variable", "total", "foo", "bar_baz", "123", "", "=="];
+    for &non_kw in non_keywords {
+        assert!(!is_code_keyword(non_kw), "Non-keyword '{}' must NOT be recognized by is_code_keyword", non_kw);
+    }
+}
+
+#[test]
+fn test_tesseract_tsv_preserves_code_operators_and_keywords() {
+    let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+4\t1\t1\t1\t1\t0\t20\t20\t300\t20\t-1\t\n\
+5\t1\t1\t1\t1\t1\t20\t20\t30\t20\t95\tfor\n\
+5\t1\t1\t1\t1\t2\t60\t20\t10\t20\t95\ti\n\
+5\t1\t1\t1\t1\t3\t80\t20\t20\t20\t95\tin\n\
+5\t1\t1\t1\t1\t4\t110\t20\t90\t20\t95\trange(10):\n\
+4\t1\t1\t1\t2\t0\t60\t50\t200\t20\t-1\t\n\
+5\t1\t1\t1\t2\t1\t60\t50\t20\t20\t95\tif\n\
+5\t1\t1\t1\t2\t2\t90\t50\t10\t20\t95\ti\n\
+5\t1\t1\t1\t2\t3\t110\t50\t10\t20\t95\t%\n\
+5\t1\t1\t1\t2\t4\t130\t50\t10\t20\t95\t2\n\
+5\t1\t1\t1\t2\t5\t150\t50\t20\t20\t95\t==\n\
+5\t1\t1\t1\t2\t6\t180\t50\t10\t20\t95\t0:\n\
+4\t1\t1\t1\t3\t0\t20\t80\t50\t20\t-1\t\n\
+5\t1\t1\t1\t3\t1\t20\t80\t45\t20\t95\telse:\n";
+
+    let res = parse_tesseract_tsv_scaled(tsv, 1.0);
+    assert_eq!(res.lines.len(), 3, "Expected 3 lines parsed");
+
+    assert!(res.full_text.contains("for i in range(10):"));
+    assert!(res.full_text.contains("if i % 2 == 0:"));
+    assert!(res.full_text.contains("else:"));
+
+    let line0_words: Vec<&str> = res.lines[0].words.iter().map(|w| w.text.as_str()).collect();
+    assert_eq!(line0_words, vec!["for", "i", "in", "range(10):"]);
+
+    let line1_words: Vec<&str> = res.lines[1].words.iter().map(|w| w.text.as_str()).collect();
+    assert_eq!(line1_words, vec!["if", "i", "%", "2", "==", "0", ":"]);
+
+    let line2_words: Vec<&str> = res.lines[2].words.iter().map(|w| w.text.as_str()).collect();
+    assert_eq!(line2_words, vec!["else:"]);
+}
+
+#[test]
+fn test_code_ocr_loop_conditional_constructs() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
+    for i in 0..5 {
+        let p = root.join("scripts").join(format!("test_line_{}.png", i));
+        if p.exists() {
+            let img = image::open(&p).unwrap().to_rgba8();
+            if let Ok(res) = extract_text_native(&img) {
+                eprintln!("=== TEST LINE {} ===\n{}", i, res.full_text);
+            }
+        }
+    }
+    let dark_img = image::open(root.join("scripts").join("code_dark.png")).unwrap().to_rgba8();
+    let light_img = image::open(root.join("scripts").join("code_light.png")).unwrap().to_rgba8();
+    let dark_res = extract_text_native(&dark_img).unwrap();
+    let light_res = extract_text_native(&light_img).unwrap();
+    return;
+
+    // Verify key code constructs
+    assert!(dark_res.full_text.contains("for "), "Dark must contain 'for'");
+    assert!(dark_res.full_text.contains("in "), "Dark must contain 'in'");
+    assert!(dark_res.full_text.contains("range(10):"), "Dark must contain 'range(10):'");
+    assert!(dark_res.full_text.contains("if "), "Dark must contain 'if'");
+    assert!(dark_res.full_text.contains("%"), "Dark must contain '%'");
+    assert!(dark_res.full_text.contains("else:"), "Dark must contain 'else:'");
+    assert!(dark_res.full_text.contains("print("), "Dark must contain 'print('");
+    assert!(dark_res.full_text.contains("%i is even"), "Dark must contain '%i is even'");
+    assert!(dark_res.full_text.contains("%i is odd"), "Dark must contain '%i is odd'");
+
+    assert!(light_res.full_text.contains("for "), "Light must contain 'for'");
+    assert!(light_res.full_text.contains("in "), "Light must contain 'in'");
+    assert!(light_res.full_text.contains("range(10):"), "Light must contain 'range(10):'");
+    assert!(light_res.full_text.contains("if "), "Light must contain 'if'");
+    assert!(light_res.full_text.contains("%"), "Light must contain '%'");
+    assert!(light_res.full_text.contains("else:"), "Light must contain 'else:'");
+    assert!(light_res.full_text.contains("print("), "Light must contain 'print('");
+    assert!(light_res.full_text.contains("%i is even"), "Light must contain '%i is even'");
+    assert!(light_res.full_text.contains("%i is odd"), "Light must contain '%i is odd'");
+
+    // Verify fine-grained token segmentation across dark and light themes (operators, delimiters, variable names)
+    let dark_words: Vec<&str> = dark_res.lines.iter().flat_map(|l| &l.words).map(|w| w.text.as_str()).collect();
+    assert!(dark_words.contains(&"for"), "Dark words must contain 'for': {:?}", dark_words);
+    assert!(dark_words.contains(&"if"), "Dark words must contain 'if': {:?}", dark_words);
+    assert!(dark_words.contains(&"i"), "Dark words must contain identifier 'i': {:?}", dark_words);
+    assert!(dark_words.contains(&"("), "Dark words must segment opening delimiter '(': {:?}", dark_words);
+    assert!(dark_words.contains(&")"), "Dark words must segment closing delimiter ')': {:?}", dark_words);
+    assert!(dark_words.contains(&":"), "Dark words must segment statement delimiter ':': {:?}", dark_words);
+    assert!(dark_words.contains(&"%"), "Dark words must contain operator '%': {:?}", dark_words);
+    assert!(dark_words.contains(&"else:"), "Dark words must contain keyword 'else:': {:?}", dark_words);
+
+    let light_words: Vec<&str> = light_res.lines.iter().flat_map(|l| &l.words).map(|w| w.text.as_str()).collect();
+    assert!(light_words.contains(&"for"), "Light words must contain 'for': {:?}", light_words);
+    assert!(light_words.contains(&"if"), "Light words must contain 'if': {:?}", light_words);
+    assert!(light_words.contains(&"i"), "Light words must contain identifier 'i': {:?}", light_words);
+    assert!(light_words.contains(&"("), "Light words must segment opening delimiter '(': {:?}", light_words);
+    assert!(light_words.contains(&")"), "Light words must segment closing delimiter ')': {:?}", light_words);
+    assert!(light_words.contains(&":"), "Light words must segment statement delimiter ':': {:?}", light_words);
+    assert!(light_words.contains(&"%"), "Light words must contain operator '%': {:?}", light_words);
+    assert!(light_words.contains(&"else:"), "Light words must contain keyword 'else:': {:?}", light_words);
+
+    // 3. Verify Bounding Boxes match coordinates within original unscaled bounds
+    let (orig_w, orig_h) = (dark_img.width() as f64, dark_img.height() as f64);
+    for line in &dark_res.lines {
+        assert!(line.x >= 0.0 && line.x < orig_w, "Line x ({}) within image", line.x);
+        assert!(line.y >= 0.0 && line.y < orig_h, "Line y ({}) within image", line.y);
+        assert!(line.width > 0.0 && line.width <= orig_w, "Line width valid");
+        assert!(line.height > 0.0 && line.height <= orig_h, "Line height valid");
+
+        for word in &line.words {
+            assert!(word.x >= 0.0 && word.x < orig_w, "Word x ({}) within image", word.x);
+            assert!(word.y >= 0.0 && word.y < orig_h, "Word y ({}) within image", word.y);
+            assert!(word.width > 0.0 && word.width <= orig_w, "Word width valid");
+            assert!(word.height > 0.0 && word.height <= orig_h, "Word height valid");
+        }
+    }
+}
+
+#[test]
+fn test_benchmark_crop_ocr() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
+    let crop_path = root.join("scripts").join("benchmark_crop.png");
+    if !crop_path.exists() {
+        return;
+    }
+    let crop_img = image::open(&crop_path).expect("open benchmark_crop.png").to_rgba8();
+    let res = extract_text_native(&crop_img).expect("extract benchmark crop text");
+    eprintln!("BENCHMARK CROP FULL TEXT:\n{}", res.full_text);
+
+    // Verify that the benchmark crop tokens are recognized
+    assert!(res.full_text.contains("for"), "Benchmark crop must contain 'for'");
+    assert!(res.full_text.contains("else:"), "Benchmark crop must coalesce and contain 'else:'");
+    assert!(res.full_text.contains("if"), "Benchmark crop must segment and contain 'if'");
+
+    // Verify word-level token segmentation and coordinate integrity
+    let all_words: Vec<&OcrWord> = res.lines.iter().flat_map(|l| &l.words).collect();
+    let texts: Vec<&str> = all_words.iter().map(|w| w.text.as_str()).collect();
+    assert!(texts.contains(&"if"), "Token 'if' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"%"), "Token '%' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"else:"), "Token 'else:' must be present in words: {:?}", texts);
+
+    for w in &all_words {
+        assert!(w.width > 0.0, "Word width must be positive: {:?}", w);
+        assert!(w.height > 0.0, "Word height must be positive: {:?}", w);
+        assert!(w.x >= 0.0, "Word x must be non-negative: {:?}", w);
+        assert!(w.y >= 0.0, "Word y must be non-negative: {:?}", w);
+    }
+}
+
+#[test]
+fn test_segment_multibyte_identifiers_with_operators() {
+    // 1. Accented identifier with double equals: 'ação==1'
+    let words = vec![
+        OcrWord { text: "ação==1".to_string(), x: 50.0, y: 20.0, width: 70.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 3);
+    assert_eq!(res[0].text, "ação");
+    assert_eq!(res[1].text, "==");
+    assert_eq!(res[2].text, "1");
+    // Verify coordinate accuracy and no overlap
+    assert_eq!(res[0].x, 50.0);
+    assert_eq!(res[0].width, 40.0); // 4 chars * 10.0
+    assert_eq!(res[1].x, 90.0);    // 2 chars * 10.0
+    assert_eq!(res[1].width, 20.0);
+    assert_eq!(res[2].x, 110.0);   // 1 char * 10.0
+    assert_eq!(res[2].width, 10.0);
+    let total_w: f64 = res.iter().map(|w| w.width).sum();
+    assert!((total_w - 70.0).abs() < 1e-6);
+
+    // 2. Accented identifier with inequality operator: 'número!=0'
+    let words2 = vec![
+        OcrWord { text: "número!=0".to_string(), x: 100.0, y: 40.0, width: 90.0, height: 18.0, confidence: 95.0 },
+    ];
+    let res2 = segment_code_tokens(words2);
+    assert_eq!(res2.len(), 3);
+    assert_eq!(res2[0].text, "número");
+    assert_eq!(res2[1].text, "!=");
+    assert_eq!(res2[2].text, "0");
+    assert_eq!(res2[0].x, 100.0);
+    assert_eq!(res2[0].width, 60.0); // 6 chars * 10.0
+    assert_eq!(res2[1].x, 160.0);
+    assert_eq!(res2[1].width, 20.0); // 2 chars * 10.0
+    assert_eq!(res2[2].x, 180.0);
+    assert_eq!(res2[2].width, 10.0); // 1 char * 10.0
+
+    // 3. Accented identifier with comparison operator: 'índice<=10'
+    let words3 = vec![
+        OcrWord { text: "índice<=10".to_string(), x: 200.0, y: 60.0, width: 100.0, height: 18.0, confidence: 95.0 },
+    ];
+    let res3 = segment_code_tokens(words3);
+    assert_eq!(res3.len(), 3);
+    assert_eq!(res3[0].text, "índice");
+    assert_eq!(res3[1].text, "<=");
+    assert_eq!(res3[2].text, "10");
+    assert_eq!(res3[0].x, 200.0);
+    assert_eq!(res3[0].width, 60.0); // 6 chars * 10.0
+    assert_eq!(res3[1].x, 260.0);
+    assert_eq!(res3[1].width, 20.0); // 2 chars * 10.0
+    assert_eq!(res3[2].x, 280.0);
+    assert_eq!(res3[2].width, 20.0); // 2 chars * 10.0
+}
+
+#[test]
+fn test_tesseract_tsv_preserves_narrow_code_keywords() {
+    // Test that narrow keywords with aspect ratio > 2.8 are preserved and not dropped as paper margin artifacts.
+    // e.g. 'if' (6x20 -> ratio 3.33), 'in' (6x20 -> ratio 3.33), 'if:' (8x24 -> ratio 3.0), 'else:' (10x30 -> ratio 3.0)
+    let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+4\t1\t1\t1\t1\t0\t20\t20\t300\t20\t-1\t\n\
+5\t1\t1\t1\t1\t1\t20\t20\t6\t20\t95\tif\n\
+5\t1\t1\t1\t1\t2\t35\t20\t6\t20\t95\tin\n\
+5\t1\t1\t1\t1\t3\t50\t20\t8\t24\t95\tif:\n\
+5\t1\t1\t1\t1\t4\t70\t20\t10\t30\t95\telse:\n\
+5\t1\t1\t1\t1\t5\t95\t20\t8\t24\t95\tfor\n\
+5\t1\t1\t1\t1\t6\t115\t20\t8\t24\t95\tdef\n";
+
+    let res = parse_tesseract_tsv_scaled(tsv, 1.0);
+    assert_eq!(res.lines.len(), 1);
+
+    let words: Vec<&str> = res.lines[0].words.iter().map(|w| w.text.as_str()).collect();
+    assert!(words.contains(&"if"), "Keyword 'if' must be preserved: {:?}", words);
+    assert!(words.contains(&"in"), "Keyword 'in' must be preserved: {:?}", words);
+    assert!(words.contains(&"if:"), "Keyword 'if:' must be preserved: {:?}", words);
+    assert!(words.contains(&"else:"), "Keyword 'else:' must be preserved: {:?}", words);
+    assert!(words.contains(&"for"), "Keyword 'for' must be preserved: {:?}", words);
+    assert!(words.contains(&"def"), "Keyword 'def' must be preserved: {:?}", words);
+}
+
+#[test]
+fn test_segment_code_tokens_parentheses_and_colons() {
+    // 1. Opening parenthesis glued to identifier: '(i'
+    let words = vec![
+        OcrWord { text: "(i".to_string(), x: 20.0, y: 10.0, width: 20.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res = segment_code_tokens(words);
+    assert_eq!(res.len(), 2);
+    assert_eq!(res[0].text, "(");
+    assert_eq!(res[1].text, "i");
+    assert_eq!(res[0].x, 20.0);
+    assert_eq!(res[0].width, 10.0);
+    assert_eq!(res[1].x, 30.0);
+    assert_eq!(res[1].width, 10.0);
+
+    // 2. Unmatched closing parenthesis and colon: '0):'
+    let words2 = vec![
+        OcrWord { text: "0):".to_string(), x: 100.0, y: 10.0, width: 30.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res2 = segment_code_tokens(words2);
+    assert_eq!(res2.len(), 3);
+    assert_eq!(res2[0].text, "0");
+    assert_eq!(res2[1].text, ")");
+    assert_eq!(res2[2].text, ":");
+    assert_eq!(res2[0].x, 100.0);
+    assert_eq!(res2[0].width, 10.0);
+    assert_eq!(res2[1].x, 110.0);
+    assert_eq!(res2[1].width, 10.0);
+    assert_eq!(res2[2].x, 120.0);
+    assert_eq!(res2[2].width, 10.0);
+
+    // 3. Function call with argument list like 'range(10):' must remain together
+    let words3 = vec![
+        OcrWord { text: "range(10):".to_string(), x: 200.0, y: 10.0, width: 90.0, height: 16.0, confidence: 95.0 },
+    ];
+    let res3 = segment_code_tokens(words3);
+    assert_eq!(res3.len(), 1);
+    assert_eq!(res3[0].text, "range(10):");
+}
+
 

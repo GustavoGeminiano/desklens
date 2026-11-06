@@ -34,4 +34,5 @@ windows = { version = "0.58", features = [
     "Foundation",
     "Foundation_Collections",
     "ApplicationModel_DataTransfer",
+    "Globalization",
 ] }

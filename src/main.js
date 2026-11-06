@@ -497,12 +497,15 @@ window.addEventListener("DOMContentLoaded", async () => {
           // Defensive guards against extreme aspect-ratio vertical border boxes, sub-3px boxes, and border margin artifacts
           if (word.width < 3 || word.height < 3) return;
 
-          const isSingleNarrow = word.text.length === 1 && /^[a-zA-Z0-9!\[\]|/\\(){}:;?]$/.test(word.text);
+          const isSingleNarrow = word.text.length === 1 && /^[\p{L}\p{N}!\[\]|/\\(){}:;?%=\+\-*<>&^~'"`.,_@$#]$/u.test(word.text);
+          const isCodeOp = /^(===|!==|>>>|==|!=|<=|>=|\+=|-=|\*=|\/=|%=|&&|\|\||->|=>|::|\.\.|<<|>>|\+\+|--|\*\*|\/\/|[=+\-*/%<>!&|^~?:;.,()[\]{}])$/.test(word.text.trim());
+          const cleanKeyword = word.text.trim().replace(/[:;,]+$/, "");
+          const isCodeKeyword = /^(if|in|is|fn|as|do|to|go|or|for|def|let|var|val|try|mut|ref|use|pub|mod|new|get|set|else|elif|case|loop|end|nil|not|and|pass|with|from|return|class|import|while|yield|await|async|break|continue|struct|enum|impl|type|trait|const|static|where|super|self|crate|except|finally|match)$/i.test(cleanKeyword);
           const isExcessiveTall = word.height > 40 && word.width < 15;
           const isEdgeBorder = (word.x <= 2 || word.y <= 2 || (word.x + word.width) >= realW - 2 || (word.y + word.height) >= realH - 2) && (word.height > 30 && word.width < 15);
           if (isEdgeBorder) return;
 
-          const shouldFilterAspect = isExcessiveTall || (word.text.length >= 2 && word.text.length <= 3) || !isSingleNarrow;
+          const shouldFilterAspect = !isCodeOp && (!isCodeKeyword || word.height > 40) && (isExcessiveTall || (word.text.length >= 2 && word.text.length <= 3) || !isSingleNarrow);
           if (shouldFilterAspect && word.height > word.width * 3.2 && word.text.length <= 3) return;
 
           items.push({

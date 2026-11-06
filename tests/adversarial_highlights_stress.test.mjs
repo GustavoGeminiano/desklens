@@ -583,3 +583,52 @@ test("HL-13: Edge border artifacts on right and bottom borders are filtered out"
   assert.equal(pills.length, 1, "Only normal word rendered");
 });
 
+test("HL-14: Narrow code keywords with colons and operators with aspect ratio > 3.2 are preserved", () => {
+  const env = setupHighlightEnvironment();
+
+  const ocrCodeKeywords = {
+    lines: [
+      {
+        text: "if: else: try: do: == != <= >= && || % é ã",
+        words: [
+          // Keywords with colons and narrow width: ratio > 3.2
+          { text: "if:", x: 20, y: 50, width: 6, height: 22 },     // ratio 3.66 > 3.2
+          { text: "else:", x: 35, y: 50, width: 8, height: 28 },   // ratio 3.5 > 3.2
+          { text: "try:", x: 50, y: 50, width: 6, height: 22 },    // ratio 3.66 > 3.2
+          { text: "do:", x: 65, y: 50, width: 6, height: 22 },     // ratio 3.66 > 3.2
+          // Multi-char operators: ratio > 3.2
+          { text: "==", x: 80, y: 50, width: 6, height: 22 },      // ratio 3.66 > 3.2
+          { text: "!=", x: 95, y: 50, width: 6, height: 22 },      // ratio 3.66 > 3.2
+          { text: "<=", x: 110, y: 50, width: 6, height: 22 },     // ratio 3.66 > 3.2
+          { text: ">=", x: 125, y: 50, width: 6, height: 22 },     // ratio 3.66 > 3.2
+          { text: "&&", x: 140, y: 50, width: 6, height: 22 },     // ratio 3.66 > 3.2
+          { text: "||", x: 155, y: 50, width: 5, height: 22 },     // ratio 4.4 > 3.2
+          { text: "%", x: 170, y: 50, width: 6, height: 22 },      // ratio 3.66 > 3.2
+          // Single Unicode accented identifiers: ratio > 3.2
+          { text: "é", x: 185, y: 50, width: 5, height: 22 },      // ratio 4.4 > 3.2
+          { text: "ã", x: 200, y: 50, width: 5, height: 22 },      // ratio 4.4 > 3.2
+        ],
+      },
+    ],
+  };
+
+  env.renderTextHighlights(ocrCodeKeywords, 800, 600);
+  const pills = env.highlightsContainer.querySelectorAll(".crop-word-highlight");
+  const texts = pills.map((p) => p.title);
+
+  assert.ok(texts.some((t) => t.includes('"if:"')), "'if:' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"else:"')), "'else:' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"try:"')), "'try:' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"do:"')), "'do:' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"=="')), "'==' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"!="')), "'!=' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"<="')), "'<=' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('">="')), "'>=' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"&&"')), "'&&' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"||"')), "'||' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"%"')), "'%' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"é"')), "'é' pill must be preserved");
+  assert.ok(texts.some((t) => t.includes('"ã"')), "'ã' pill must be preserved");
+  assert.equal(pills.length, 13, "All 13 code keywords, operators, and Unicode characters must be preserved as pills");
+});
+
