@@ -28,7 +28,7 @@ function Generate-CodeImage($text, $outputPath, $isDark) {
 }
 
 function Generate-LoopCodeImage($text, $outputPath, $isDark) {
-    $bmp = New-Object System.Drawing.Bitmap 1000, 400
+    $bmp = New-Object System.Drawing.Bitmap 1000, 420
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
 
@@ -41,11 +41,14 @@ function Generate-LoopCodeImage($text, $outputPath, $isDark) {
     }
 
     $g.Clear($bgColor)
-    $font = New-Object System.Drawing.Font('Lucida Console', [float]15.0, [System.Drawing.FontStyle]::Regular)
+    $font = New-Object System.Drawing.Font('Consolas', [float]15.0, [System.Drawing.FontStyle]::Regular)
     $brush = New-Object System.Drawing.SolidBrush($textColor)
 
-    $rect = New-Object System.Drawing.RectangleF([float]30.0, [float]30.0, [float]940.0, [float]340.0)
-    $g.DrawString($text, $font, $brush, $rect)
+    $y = [float]30.0
+    foreach ($line in ($text -split "`r?`n")) {
+        $g.DrawString($line, $font, $brush, [float]30.0, $y)
+        $y += [float]34.0
+    }
 
     $bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
     $brush.Dispose()
@@ -85,4 +88,64 @@ $loopLightPath = Join-Path $PSScriptRoot "code_loop_light.png"
 Generate-LoopCodeImage $benchmarkCode $loopDarkPath $true
 Generate-LoopCodeImage $benchmarkCode $loopLightPath $false
 
-Write-Output "Successfully generated: $darkPath, $lightPath, $loopDarkPath, and $loopLightPath"
+function Generate-SyntaxBenchmarkImage($outputPath) {
+    $bmp = New-Object System.Drawing.Bitmap 480, 320
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+
+    $bg = [System.Drawing.Color]::FromArgb(18, 22, 25)
+    $colLineNum = [System.Drawing.Color]::FromArgb(80, 95, 110)
+    $colKw = [System.Drawing.Color]::FromArgb(204, 120, 50)
+    $colIdent = [System.Drawing.Color]::FromArgb(169, 183, 198)
+    $colFunc = [System.Drawing.Color]::FromArgb(104, 151, 187)
+    $colNum = [System.Drawing.Color]::FromArgb(152, 118, 170)
+    $colStr = [System.Drawing.Color]::FromArgb(106, 135, 89)
+    $colOut = [System.Drawing.Color]::FromArgb(128, 128, 128)
+
+    $g.Clear($bg)
+    $font = New-Object System.Drawing.Font('Consolas', [float]14.0, [System.Drawing.FontStyle]::Regular)
+    $charW = [float]11.0
+    $q = [char]34
+
+    $lines = @(
+        @(@(1, "1", $colLineNum), @(4, "for", $colKw), @(8, "i", $colIdent), @(10, "in", $colKw), @(13, "range(10):", $colFunc)),
+        @(@(1, "2", $colLineNum), @(8, "if", $colKw), @(11, "i", $colIdent), @(13, "%", $colIdent), @(15, "2", $colNum), @(17, "==", $colIdent), @(20, "0:", $colNum)),
+        @(@(1, "3", $colLineNum), @(12, "print", $colKw), @(17, "(f", $colIdent), @(19, "${q}%i is even${q}", $colStr), @(31, ")", $colIdent)),
+        @(@(1, "4", $colLineNum), @(8, "else:", $colKw)),
+        @(@(1, "5", $colLineNum), @(12, "print", $colKw), @(17, "(f", $colIdent), @(19, "${q}%i is odd${q}", $colStr), @(30, ")", $colIdent)),
+        @(),
+        @(@(1, "7", $colLineNum), @(4, "0 is even", $colOut)),
+        @(@(1, "8", $colLineNum), @(4, "1 is odd", $colOut)),
+        @(@(1, "9", $colLineNum), @(4, "2 is even", $colOut)),
+        @(@(0, "10", $colLineNum), @(4, "3 is odd", $colOut))
+    )
+
+    $y = [float]18.0
+    foreach ($line in $lines) {
+        foreach ($seg in $line) {
+            $colIdx = $seg[0]
+            $txt = $seg[1]
+            $col = $seg[2]
+            $brush = New-Object System.Drawing.SolidBrush($col)
+            for ($ci = 0; $ci -lt $txt.Length; $ci++) {
+                $ch = $txt.Substring($ci, 1)
+                if ($ch -ne " ") {
+                    $x = [float]14.0 + (($colIdx + $ci) * $charW)
+                    $g.DrawString($ch, $font, $brush, $x, $y)
+                }
+            }
+            $brush.Dispose()
+        }
+        $y += [float]28.0
+    }
+
+    $bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $font.Dispose()
+    $g.Dispose()
+    $bmp.Dispose()
+}
+
+$benchmarkCropPath = Join-Path $PSScriptRoot "benchmark_crop.png"
+Generate-SyntaxBenchmarkImage $benchmarkCropPath
+
+Write-Output "Successfully generated: $darkPath, $lightPath, $loopDarkPath, $loopLightPath, and $benchmarkCropPath"

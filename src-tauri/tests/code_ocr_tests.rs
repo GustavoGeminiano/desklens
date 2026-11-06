@@ -789,20 +789,15 @@ fn test_tesseract_tsv_preserves_code_operators_and_keywords() {
 #[test]
 fn test_code_ocr_loop_conditional_constructs() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    for i in 0..5 {
-        let p = root.join("scripts").join(format!("test_line_{}.png", i));
-        if p.exists() {
-            let img = image::open(&p).unwrap().to_rgba8();
-            if let Ok(res) = extract_text_native(&img) {
-                eprintln!("=== TEST LINE {} ===\n{}", i, res.full_text);
-            }
-        }
+    let dark_path = root.join("scripts").join("code_loop_dark.png");
+    let light_path = root.join("scripts").join("code_loop_light.png");
+    if !dark_path.exists() || !light_path.exists() {
+        return;
     }
-    let dark_img = image::open(root.join("scripts").join("code_dark.png")).unwrap().to_rgba8();
-    let light_img = image::open(root.join("scripts").join("code_light.png")).unwrap().to_rgba8();
+    let dark_img = image::open(&dark_path).unwrap().to_rgba8();
+    let light_img = image::open(&light_path).unwrap().to_rgba8();
     let dark_res = extract_text_native(&dark_img).unwrap();
     let light_res = extract_text_native(&light_img).unwrap();
-    return;
 
     // Verify key code constructs
     assert!(dark_res.full_text.contains("for "), "Dark must contain 'for'");
@@ -872,19 +867,31 @@ fn test_benchmark_crop_ocr() {
     }
     let crop_img = image::open(&crop_path).expect("open benchmark_crop.png").to_rgba8();
     let res = extract_text_native(&crop_img).expect("extract benchmark crop text");
-    eprintln!("BENCHMARK CROP FULL TEXT:\n{}", res.full_text);
 
-    // Verify that the benchmark crop tokens are recognized
+    // Verify that the benchmark crop tokens are recognized across syntax-highlighted lines and console output
     assert!(res.full_text.contains("for"), "Benchmark crop must contain 'for'");
+    assert!(res.full_text.contains("range(10):"), "Benchmark crop must contain 'range(10):'");
     assert!(res.full_text.contains("else:"), "Benchmark crop must coalesce and contain 'else:'");
     assert!(res.full_text.contains("if"), "Benchmark crop must segment and contain 'if'");
+    assert!(res.full_text.contains("print(f"), "Benchmark crop must contain 'print(f'");
+    assert!(res.full_text.contains("0 is even"), "Benchmark crop must contain '0 is even'");
+    assert!(res.full_text.contains("1 is odd"), "Benchmark crop must contain '1 is odd'");
+    assert!(res.full_text.contains("2 is even"), "Benchmark crop must contain '2 is even'");
+    assert!(res.full_text.contains("3 is odd"), "Benchmark crop must contain '3 is odd'");
 
     // Verify word-level token segmentation and coordinate integrity
     let all_words: Vec<&OcrWord> = res.lines.iter().flat_map(|l| &l.words).collect();
     let texts: Vec<&str> = all_words.iter().map(|w| w.text.as_str()).collect();
+    assert!(texts.contains(&"for"), "Token 'for' must be present in words: {:?}", texts);
     assert!(texts.contains(&"if"), "Token 'if' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"i"), "Token 'i' must be present in words: {:?}", texts);
     assert!(texts.contains(&"%"), "Token '%' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"2"), "Token '2' must be present in words: {:?}", texts);
     assert!(texts.contains(&"else:"), "Token 'else:' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"0"), "Token '0' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"is"), "Token 'is' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"even"), "Token 'even' must be present in words: {:?}", texts);
+    assert!(texts.contains(&"odd"), "Token 'odd' must be present in words: {:?}", texts);
 
     for w in &all_words {
         assert!(w.width > 0.0, "Word width must be positive: {:?}", w);

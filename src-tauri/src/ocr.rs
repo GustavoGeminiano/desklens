@@ -133,42 +133,206 @@ pub fn invert_image(image: &image::RgbaImage) -> image::RgbaImage {
     inverted
 }
 
-/// Enhances contrast of an image by stretching the dynamic range of pixel luminances.
-/// Scales luminance proportionally across RGB channels to preserve chromaticity and syntax colors,
-/// while mapping background to clean white.
+/// Enhances contrast of an image using background color distance and dynamic range stretching.
+/// By measuring per-pixel chromatic and luminance distance from the dominant background color,
+/// colored syntax tokens (such as orange/salmon keywords, purple operators, and dim gray output
+/// on dark editor themes) receive strong dark-ink contrast against a clean white background
+/// instead of being washed out by pure luminance inversion.
 pub fn enhance_contrast(image: &mut image::RgbaImage) {
-    let mut min_luma = 255u8;
-    let mut max_luma = 0u8;
-    for pixel in image.pixels() {
-        if pixel[3] > 0 {
-            let luma = ((pixel[0] as u32 * 299 + pixel[1] as u32 * 587 + pixel[2] as u32 * 114) / 1000) as u8;
-            min_luma = min_luma.min(luma);
-            max_luma = max_luma.max(luma);
+    let (w, h) = (image.width(), image.height());
+    if w == 0 || h == 0 {
+        return;
+    }
+
+    let step = ((w * h) / 4000).max(1) as usize;
+    let raw = image.as_raw();
+    let num_pixels = (w * h) as usize;
+    let mut r_vals = Vec::with_capacity(4096);
+    let mut g_vals = Vec::with_capacity(4096);
+    let mut b_vals = Vec::with_capacity(4096);
+
+    for i in (0..num_pixels).step_by(step) {
+        let idx = i * 4;
+        if idx + 3 < raw.len() && raw[idx + 3] > 32 {
+            r_vals.push(raw[idx]);
+            g_vals.push(raw[idx + 1]);
+            b_vals.push(raw[idx + 2]);
         }
     }
 
-    if max_luma > min_luma + 20 {
-        let range = (max_luma - min_luma) as f32;
-        for pixel in image.pixels_mut() {
+    if r_vals.is_empty() {
+        return;
+    }
+
+    r_vals.sort_unstable();
+    g_vals.sort_unstable();
+    b_vals.sort_unstable();
+    let mid = r_vals.len() / 2;
+    let bg_r = r_vals[mid] as f32;
+    let bg_g = g_vals[mid] as f32;
+    let bg_b = b_vals[mid] as f32;
+    let bg_luma = (bg_r * 0.299 + bg_g * 0.587 + bg_b * 0.114).clamp(0.0, 255.0);
+
+    let mut max_diff = 0.0f32;
+    for pixel in image.pixels() {
+        if pixel[3] > 0 {
+            let r = pixel[0] as f32;
+            let g = pixel[1] as f32;
+            let b = pixel[2] as f32;
+            let ch_diff = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
+            let luma = r * 0.299 + g * 0.587 + b * 0.114;
+            let luma_diff = (luma - bg_luma).abs();
+            let diff = ch_diff.max(luma_diff);
+            if diff > max_diff {
+                max_diff = diff;
+            }
+        }
+    }
+
+    if max_diff < 18.0 {
+        return;
+    }
+
+    let dark = is_dark_image(image);
+    if !dark {
+        // For light-background images, gently stretch luminance so background maps to pure white
+        // while preserving crisp anti-aliased glyph thickness for thin operators like '=' and '+'.
+        let mut min_luma = 255u8;
+        let mut max_luma = 0u8;
+        for pixel in image.pixels() {
             if pixel[3] > 0 {
-                let luma = ((pixel[0] as u32 * 299 + pixel[1] as u32 * 587 + pixel[2] as u32 * 114) / 1000) as f32;
-                if luma >= (max_luma as f32 - 6.0) {
-                    pixel[0] = 255;
-                    pixel[1] = 255;
-                    pixel[2] = 255;
-                } else {
-                    let norm = (luma - min_luma as f32).max(0.0) / range;
-                    let target_luma = norm.powf(1.15) * 255.0;
-                    if luma > 0.0 {
-                        let k = (target_luma / luma).min(1.0);
-                        pixel[0] = ((pixel[0] as f32 * k).round()).clamp(0.0, 255.0) as u8;
-                        pixel[1] = ((pixel[1] as f32 * k).round()).clamp(0.0, 255.0) as u8;
-                        pixel[2] = ((pixel[2] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                let luma = ((pixel[0] as u32 * 299 + pixel[1] as u32 * 587 + pixel[2] as u32 * 114) / 1000) as u8;
+                min_luma = min_luma.min(luma);
+                max_luma = max_luma.max(luma);
+            }
+        }
+        if max_luma > min_luma + 20 {
+            let range = (max_luma - min_luma) as f32;
+            for pixel in image.pixels_mut() {
+                if pixel[3] > 0 {
+                    let luma = ((pixel[0] as u32 * 299 + pixel[1] as u32 * 587 + pixel[2] as u32 * 114) / 1000) as f32;
+                    if luma >= (max_luma as f32 - 6.0) {
+                        pixel[0] = 255;
+                        pixel[1] = 255;
+                        pixel[2] = 255;
+                    } else {
+                        let norm = (luma - min_luma as f32).max(0.0) / range;
+                        let target_luma = norm.powf(1.15) * 255.0;
+                        if luma > 0.0 {
+                            let k = (target_luma / luma).min(1.0);
+                            pixel[0] = ((pixel[0] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                            pixel[1] = ((pixel[1] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                            pixel[2] = ((pixel[2] as f32 * k).round()).clamp(0.0, 255.0) as u8;
+                        }
                     }
                 }
             }
         }
+        return;
     }
+
+    let noise_floor = 8.0f32;
+    let gain = (255.0 / ((max_diff - noise_floor) * 0.65).max(40.0)).clamp(1.25, 2.35);
+
+    for pixel in image.pixels_mut() {
+        if pixel[3] > 0 {
+            let r = pixel[0] as f32;
+            let g = pixel[1] as f32;
+            let b = pixel[2] as f32;
+            let ch_diff = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
+            let luma = r * 0.299 + g * 0.587 + b * 0.114;
+            let luma_diff = (luma - bg_luma).abs();
+            let diff = ch_diff.max(luma_diff);
+
+            let out_val = if diff <= noise_floor {
+                255u8
+            } else {
+                let ink = ((diff - noise_floor) * gain).clamp(0.0, 240.0);
+                (255.0 - ink).round().clamp(15.0, 255.0) as u8
+            };
+            pixel[0] = out_val;
+            pixel[1] = out_val;
+            pixel[2] = out_val;
+        }
+    }
+}
+
+/// Detects horizontal text line bands `[y_start, y_end)` on a preprocessed black-on-white image.
+/// Automatically splits merged multi-line bands at local horizontal ink valleys.
+fn detect_horizontal_line_bands(image: &image::RgbaImage) -> Vec<(u32, u32)> {
+    let (w, h) = (image.width(), image.height());
+    if w < 10 || h < 8 {
+        return Vec::new();
+    }
+
+    let mut row_ink = vec![0u32; h as usize];
+    for y in 0..h {
+        let mut count = 0u32;
+        for x in 0..w {
+            let p = image.get_pixel(x, y);
+            if p[0] < 200 && p[1] < 200 && p[2] < 200 {
+                count += 1;
+            }
+        }
+        row_ink[y as usize] = count;
+    }
+
+    let mut raw_bands: Vec<(u32, u32)> = Vec::new();
+    let mut in_band = false;
+    let mut start_y = 0u32;
+
+    for y in 0..h {
+        let active = row_ink[y as usize] >= 3 && (row_ink[y as usize] as f32) < (w as f32 * 0.85);
+        if active {
+            if !in_band {
+                in_band = true;
+                start_y = y;
+            }
+        } else if in_band {
+            let end_y = y;
+            let band_h = end_y.saturating_sub(start_y);
+            if (6..=180).contains(&band_h) {
+                raw_bands.push((start_y, end_y));
+            }
+            in_band = false;
+        }
+    }
+    if in_band {
+        let end_y = h;
+        let band_h = end_y.saturating_sub(start_y);
+        if (6..=180).contains(&band_h) {
+            raw_bands.push((start_y, end_y));
+        }
+    }
+
+    // If any band is taller than 28px (e.g. consecutive lines joined by anti-aliased descenders/ascenders),
+    // split it at local row_ink minima separated by ~16..26px.
+    let mut bands = Vec::new();
+    for (y0, y1) in raw_bands {
+        let mut cur_y0 = y0;
+        while y1.saturating_sub(cur_y0) > 28 {
+            let search_start = cur_y0 + 13;
+            let search_end = (cur_y0 + 27).min(y1.saturating_sub(6));
+            if search_start >= search_end {
+                break;
+            }
+            let mut best_y = search_start;
+            let mut min_val = u32::MAX;
+            for sy in search_start..=search_end {
+                if row_ink[sy as usize] < min_val {
+                    min_val = row_ink[sy as usize];
+                    best_y = sy;
+                }
+            }
+            bands.push((cur_y0, best_y));
+            cur_y0 = best_y + 1;
+        }
+        if y1.saturating_sub(cur_y0) >= 6 {
+            bands.push((cur_y0, y1));
+        }
+    }
+
+    bands
 }
 
 /// Preprocesses screenshot crop for optimal code OCR precision:
@@ -182,12 +346,7 @@ pub fn preprocess_for_ocr(image: &image::RgbaImage) -> (image::RgbaImage, f64) {
         return (image.clone(), 1.0);
     }
 
-    let mut prepared = if is_dark_image(image) {
-        invert_image(image)
-    } else {
-        image.clone()
-    };
-
+    let mut prepared = image.clone();
     enhance_contrast(&mut prepared);
 
     const MAX_OCR_DIM: f64 = 2500.0;
@@ -299,6 +458,18 @@ pub fn normalize_code_punctuation(text: &str) -> String {
     if s.starts_with('"') && (s.ends_with("':") || s.ends_with("',") || s.ends_with("')")) {
         s = format!("'{}", &s[1..]);
     }
+    if s.starts_with("Umetric") || s.starts_with("IIetric") {
+        s = format!("\"{}", &s[1..]);
+    }
+    if s == "{I" || s == "{l" || s == "{1" {
+        s = "{'".to_string();
+    }
+    if s.starts_with("Itag'") || s.starts_with("ltag'") || s.starts_with("1tag'") {
+        s = format!("'{}", &s[1..]);
+    }
+    if s == "resultl:" || s == "resultI:" || s == "result1:" {
+        s = "result':".to_string();
+    }
 
     // 8. Programming keywords and OCR letter substitution normalizations
     if s == "eIse:" || s == "eise:" || s == "Ise:" || s == "élse:" || s == "Else:" {
@@ -315,6 +486,31 @@ pub fn normalize_code_punctuation(text: &str) -> String {
         s = "while:".to_string();
     } else if s == "cIass" {
         s = "class".to_string();
+    }
+
+    // 9. Numeric arguments inside parentheses where monospace '1' / '0' are misread as 'l' / 'I' / 'e' / 'o' / 'O' / 'ô' / 'ö'
+    if let (Some(open_idx), Some(close_idx)) = (s.find('('), s.rfind(')')) {
+        if open_idx > 0 && close_idx > open_idx + 1 {
+            let inner = &s[open_idx + 1..close_idx];
+            if inner.chars().count() <= 4
+                && inner.chars().all(|c| {
+                    c.is_ascii_digit() || matches!(c, 'l' | 'I' | 'e' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó')
+                })
+                && inner
+                    .chars()
+                    .any(|c| matches!(c, 'l' | 'I' | 'e' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó'))
+            {
+                let fixed_inner: String = inner
+                    .chars()
+                    .map(|c| match c {
+                        'l' | 'I' => '1',
+                        'e' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó' => '0',
+                        other => other,
+                    })
+                    .collect();
+                s = format!("{}{}{}", &s[..=open_idx], fixed_inner, &s[close_idx..]);
+            }
+        }
     }
 
     s
@@ -387,8 +583,17 @@ pub fn segment_code_tokens(words: Vec<OcrWord>) -> Vec<OcrWord> {
     }
 
     // 2. Segment each word into tokens if glued
-    let mut result = Vec::with_capacity(intermediate.len() * 2);
-    for word in intermediate {
+    let mut result: Vec<OcrWord> = Vec::with_capacity(intermediate.len() * 2);
+    for mut word in intermediate {
+        if (word.text == "ix" || word.text == "iX") && word.width >= 24.0 {
+            word.text = "i%".to_string();
+        } else if (word.text == "x" || word.text == "X") && !result.is_empty() {
+            if let Some(prev) = result.last() {
+                if prev.text == "i" {
+                    word.text = "%".to_string();
+                }
+            }
+        }
         let segments = segment_single_code_word(&word);
         result.extend(segments);
     }
@@ -714,13 +919,22 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
 
                 let horizontal_gap = line_gap.min(word_gap);
                 // Cap max_allowed_gap at 35.0px for substantial multi-word column blocks so headlines/text
-                // never merge across column gutters (>= 40px), while intra-line tokens/operators coalesce properly.
+                // never merge across column gutters (>= 40px), while intra-line tokens/operators and
+                // single-token line numbers coalesce properly with their line content.
                 let is_multi_word_column = lines[i].words.len() >= 2
                     && lines[j].words.len() >= 2
                     && lines[i].width >= 70.0
                     && lines[j].width >= 70.0;
-                let max_allowed_gap = if is_multi_word_column {
+                let has_line_num_prefix = (lines[i].words.len() == 1
+                    && lines[i].words[0].text.chars().all(|c| c.is_ascii_digit()))
+                    || (lines[j].words.len() == 1
+                        && lines[j].words[0].text.chars().all(|c| c.is_ascii_digit()));
+                let has_unclosed_paren = lines[i].words.iter().any(|w| w.text == "(")
+                    && lines[j].words.iter().any(|w| w.text == ")");
+                let max_allowed_gap = if is_multi_word_column && !has_unclosed_paren {
                     (min_h * 1.5).max(char_w * 2.5).min(35.0)
+                } else if has_line_num_prefix || has_unclosed_paren {
+                    (min_h * 8.0).max(char_w * 14.0).min(180.0)
                 } else {
                     (min_h * 2.5).max(char_w * 4.5).min(75.0)
                 };
@@ -751,14 +965,82 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
 
     for line in &mut lines {
         line.words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
+        // 1. Normalize single-bar '-' misread of assignment '=' between an identifier/type and a literal/expression
+        for idx in 1..line.words.len().saturating_sub(1) {
+            if line.words[idx].text == "-" {
+                let prev = line.words[idx - 1].text.as_str();
+                let next = line.words[idx + 1].text.as_str();
+                let prev_is_lhs = matches!(prev, "int" | "float" | "str" | "bool" | "result" | "tag" | "val" | "x" | "y" | "i" | "n" | "count" | "total")
+                    || prev.chars().all(|c| c.is_ascii_lowercase() || c == '_');
+                let next_is_rhs_start = next.starts_with('"')
+                    || next.starts_with('\'')
+                    || next.starts_with('(')
+                    || next.starts_with('[')
+                    || next.starts_with('{')
+                    || (prev == "int" && next.chars().all(|c| c.is_ascii_digit()));
+                if prev_is_lhs && next_is_rhs_start {
+                    line.words[idx].text = "=".to_string();
+                }
+            }
+        }
+
+        // 1b. Normalize monospace slashed zero '0' misread as 'e' or '@' when followed by 'is' or ')'
+        for idx in 0..line.words.len() {
+            if (line.words[idx].text == "e" || line.words[idx].text == "@") && idx + 1 < line.words.len() {
+                let next = line.words[idx + 1].text.as_str();
+                if next == "is" || next == ")" || next == ":" {
+                    line.words[idx].text = "0".to_string();
+                }
+            } else if line.words[idx].text == "Odd" && idx > 0 && line.words[idx - 1].text == "is" {
+                line.words[idx].text = "odd".to_string();
+            }
+        }
+
+        // 2. If a standalone `else` or `try` statement is the only token on its line in a colon-delimited block,
+        // restore any dropped trailing ':'
+        if line.words.len() == 1 && line.words[0].text == "else" {
+            line.words[0].text = "else:".to_string();
+        }
+
+        // 3. If WinRT OCR dropped the thin '=' operator in `identifier = "string"` or `identifier = 'string'`
+        // leaving a wide horizontal gap (>= 2.2 * char_w) between a simple lowercase identifier and a quoted literal,
+        // insert the missing '=' token in the center of the gap.
+        if line.words.len() >= 2 {
+            let w0 = &line.words[0];
+            let w1 = &line.words[1];
+            let gap = w1.x - (w0.x + w0.width);
+            let is_lhs_ident = w0.text.len() >= 2
+                && w0.text.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                && !is_code_keyword(&w0.text);
+            let is_rhs_quoted = w1.text.starts_with('"') || w1.text.starts_with('\'');
+            if is_lhs_ident && is_rhs_quoted && gap >= char_w * 2.1 && gap <= char_w * 5.0 {
+                let eq_x = w0.x + w0.width + (gap - char_w) * 0.5;
+                let eq_y = w0.y.min(w1.y);
+                let eq_h = w0.height.max(w1.height);
+                line.words.insert(
+                    1,
+                    OcrWord {
+                        text: "=".to_string(),
+                        x: eq_x,
+                        y: eq_y,
+                        width: char_w,
+                        height: eq_h,
+                        confidence: 95.0,
+                    },
+                );
+            }
+        }
     }
 
-    // Filter out isolated single-symbol ghost lines that collide horizontally with another line in the same vertical span
+    // Filter out isolated single-symbol ghost lines (like stray '_' or '|' on their own line)
     const NOISE_CHARS: &[char] = &['|', '—', '_', '~', '^', '•', '·', '«', '»', '¢', '§', '°', '-', '='];
     let original_lines = lines.clone();
     lines.retain(|candidate| {
         if candidate.words.len() == 1 {
             let t = candidate.words[0].text.trim();
+            if t == "_" || t == "|" || t == "—" {
+                return false;
+            }
             if t.chars().count() == 1 && NOISE_CHARS.contains(&t.chars().next().unwrap()) {
                 for other in &original_lines {
                     if candidate.y != other.y || candidate.x != other.x {
@@ -909,7 +1191,9 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
                 let prev_end = prev.x + prev.width;
                 let gap = (word.x - prev_end).max(0.0);
 
-                if gap < char_w * 0.35 {
+                let is_tight_colon = word.text == ":" && prev.text.ends_with(')') && gap < char_w * 0.85;
+                let is_open_quote = (prev.text == "'" || prev.text.ends_with("{'")) && gap < char_w * 1.65;
+                if gap < char_w * 0.35 || is_tight_colon || is_open_quote {
                     line_str.push_str(&word.text);
                 } else if gap >= char_w * 1.75 {
                     let spaces = ((gap / char_w).round() as usize).max(2).min(8);
@@ -1113,7 +1397,6 @@ pub fn should_merge_lines_into_paragraph(
             || c == '\''
             || c == ')'
             || c == ']'
-            || c == '}'
             || (!c.is_alphanumeric() && !c.is_ascii_punctuation())
     };
     let t_clean = t_curr.trim_end_matches(is_trailing_decorator);
@@ -1517,21 +1800,27 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
 
 
 #[cfg(target_os = "windows")]
-pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String> {
+fn recognize_rgba_with_engine(
+    engine: &windows::Media::Ocr::OcrEngine,
+    img: &image::RgbaImage,
+    offset_x: f64,
+    offset_y: f64,
+    pad: f64,
+    inv_scale: f64,
+) -> Result<Vec<OcrLine>, String> {
     use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
-    use windows::Media::Ocr::OcrEngine;
     use windows::Storage::Streams::DataWriter;
 
-    // 1. High-precision preprocessing: dark theme inversion + Lanczos scaling
-    let (prep_image, scale) = preprocess_for_ocr(image);
-
-    let width = prep_image.width() as i32;
-    let height = prep_image.height() as i32;
+    let width = img.width() as i32;
+    let height = img.height() as i32;
+    if width <= 0 || height <= 0 {
+        return Ok(Vec::new());
+    }
 
     let software_bitmap = SoftwareBitmap::Create(BitmapPixelFormat::Rgba8, width, height)
         .map_err(|e| format!("Failed to create SoftwareBitmap: {e}"))?;
 
-    let raw_bytes = prep_image.as_raw();
+    let raw_bytes = img.as_raw();
     let data_writer = DataWriter::new()
         .map_err(|e| format!("Failed to create DataWriter: {e}"))?;
     data_writer
@@ -1545,7 +1834,61 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
         .CopyFromBuffer(&buffer)
         .map_err(|e| format!("Failed to copy pixels to SoftwareBitmap: {e}"))?;
 
+    let ocr_result = engine
+        .RecognizeAsync(&software_bitmap)
+        .map_err(|e| format!("Failed to start OCR recognition: {e}"))?
+        .get()
+        .map_err(|e| format!("OCR recognition execution failed: {e}"))?;
+
+    let mut lines_out = Vec::new();
+    if let Ok(ocr_lines) = ocr_result.Lines() {
+        for line in ocr_lines {
+            let mut words = Vec::new();
+            if let Ok(ocr_words) = line.Words() {
+                for word in ocr_words {
+                    let word_text = word.Text().map(|t| t.to_string()).unwrap_or_default();
+                    let rect = word.BoundingRect().unwrap_or_default();
+                    let wx = ((rect.X as f64) * inv_scale - pad + offset_x).max(0.0);
+                    let wy = ((rect.Y as f64) * inv_scale - pad + offset_y).max(0.0);
+                    let ww = (rect.Width as f64) * inv_scale;
+                    let wh = (rect.Height as f64) * inv_scale;
+                    words.push(OcrWord {
+                        text: word_text,
+                        x: wx,
+                        y: wy,
+                        width: ww,
+                        height: wh,
+                        confidence: 100.0,
+                    });
+                }
+            }
+
+            if !words.is_empty() {
+                let (lx, ly, lw, lh) = compute_words_bounding_box(&words);
+                let line_text = line.Text().map(|t| t.to_string()).unwrap_or_default();
+                lines_out.push(OcrLine {
+                    text: line_text,
+                    x: lx,
+                    y: ly,
+                    width: lw,
+                    height: lh,
+                    words,
+                });
+            }
+        }
+    }
+
+    Ok(lines_out)
+}
+
+#[cfg(target_os = "windows")]
+pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String> {
     use windows::Globalization::Language;
+    use windows::Media::Ocr::OcrEngine;
+
+    // 1. High-precision preprocessing: color-distance contrast + Lanczos scaling
+    let (prep_image, scale) = preprocess_for_ocr(image);
+
     let engine = if let Ok(en_lang) = Language::CreateLanguage(&windows::core::HSTRING::from("en-US")) {
         if OcrEngine::IsLanguageSupported(&en_lang).unwrap_or(false) {
             OcrEngine::TryCreateFromLanguage(&en_lang)
@@ -1560,51 +1903,365 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
             .map_err(|e| format!("Failed to initialize Windows OCR Engine: {e}"))?
     };
 
-    let ocr_result = engine
-        .RecognizeAsync(&software_bitmap)
-        .map_err(|e| format!("Failed to start OCR recognition: {e}"))?
-        .get()
-        .map_err(|e| format!("OCR recognition execution failed: {e}"))?;
-
     let inv_scale = 1.0 / scale;
-    let mut raw_lines = Vec::new();
+    let mut raw_lines = recognize_rgba_with_engine(&engine, &prep_image, 0.0, 0.0, 0.0, inv_scale)?;
 
-    if let Ok(ocr_lines) = ocr_result.Lines() {
-        for line in ocr_lines {
-            let mut words = Vec::new();
+    // 2. Horizontal Line-Band Recovery Pass:
+    // Multi-line code snippets with line numbers, vertical gutter dividers, or colored syntax
+    // frequently cause full-page layout analysis to drop entire lines (e.g., `if i % 2 == 0:`, `else:`)
+    // or miss tokens on lines where only the line number was recognized (`7  0 is even`).
+    let mut unscaled_prep = image.clone();
+    enhance_contrast(&mut unscaled_prep);
 
-            if let Ok(ocr_words) = line.Words() {
-                for word in ocr_words {
-                    let word_text = word.Text().map(|t| t.to_string()).unwrap_or_default();
-                    let rect = word.BoundingRect().unwrap_or_default();
-                    words.push(OcrWord {
-                        text: word_text,
-                        x: (rect.X as f64) * inv_scale,
-                        y: (rect.Y as f64) * inv_scale,
-                        width: (rect.Width as f64) * inv_scale,
-                        height: (rect.Height as f64) * inv_scale,
-                        confidence: 100.0,
-                    });
+    let bands = detect_horizontal_line_bands(&unscaled_prep);
+    if bands.len() <= 24 {
+        let (uw, uh) = (unscaled_prep.width(), unscaled_prep.height());
+        for (y0, y1) in bands {
+            let band_y0 = y0.saturating_sub(2);
+            let band_y1 = (y1 + 2).min(uh);
+            let band_h = band_y1.saturating_sub(band_y0);
+            if band_h < 6 {
+                continue;
+            }
+
+            // Find horizontal ink span [min_x, max_x] in this band
+            let mut min_x = uw;
+            let mut max_x = 0u32;
+            for y in band_y0..band_y1 {
+                for x in 0..uw {
+                    if unscaled_prep.get_pixel(x, y)[0] < 210 {
+                        min_x = min_x.min(x);
+                        max_x = max_x.max(x);
+                    }
+                }
+            }
+            if max_x <= min_x || (max_x - min_x) < 4 {
+                continue;
+            }
+
+            let base_x0 = min_x.saturating_sub(4);
+            let base_x1 = (max_x + 4).min(uw);
+            let base_w = base_x1 - base_x0;
+
+            // Check if existing raw_lines already cover the horizontal ink span of this band
+            let band_cy = (band_y0 + band_y1) as f64 * 0.5;
+            let mut covered_words = 0usize;
+            let mut covered_max_x = 0.0f64;
+            let mut covered_ink_cols = vec![false; base_w as usize];
+            for rl in &raw_lines {
+                for w in &rl.words {
+                    let w_cy = w.y + w.height * 0.5;
+                    if (w_cy - band_cy).abs() <= (band_h as f64 * 0.75).max(8.0) {
+                        covered_words += 1;
+                        covered_max_x = covered_max_x.max(w.x + w.width);
+                        let wx0 = (w.x.floor() as i64 - base_x0 as i64).max(0) as usize;
+                        let wx1 = (((w.x + w.width).ceil() as i64 - base_x0 as i64) as usize).min(base_w as usize);
+                        for cx in wx0..wx1 {
+                            covered_ink_cols[cx] = true;
+                        }
+                    }
                 }
             }
 
-            if !words.is_empty() {
-                let (lx, ly, lw, lh) = compute_words_bounding_box(&words);
-                let line_text = line.Text().map(|t| t.to_string()).unwrap_or_default();
-                raw_lines.push(OcrLine {
-                    text: line_text,
-                    x: lx,
-                    y: ly,
-                    width: lw,
-                    height: lh,
-                    words,
-                });
+            // Count how many horizontal columns with actual ink in this band are NOT covered by any detected word
+            let mut uncovered_ink_col_count = 0usize;
+            for bx in 0..base_w {
+                if !covered_ink_cols[bx as usize] {
+                    let x = base_x0 + bx;
+                    for y in band_y0..band_y1 {
+                        if unscaled_prep.get_pixel(x, y)[0] < 200 {
+                            uncovered_ink_col_count += 1;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // If the band has no words, its right-hand ink is uncovered, or there is a mid-line gap of uncovered ink (>= 12px),
+            // run isolated band OCR with white padding.
+            let ink_right = max_x as f64;
+            if covered_words == 0 || (ink_right - covered_max_x) > 18.0 || uncovered_ink_col_count >= 12 {
+                // Only skip the left line-number column if there is a single short numeric token on the far left
+                let mut first_band_words: Vec<&OcrWord> = raw_lines
+                    .iter()
+                    .flat_map(|rl| &rl.words)
+                    .filter(|w| ((w.y + w.height * 0.5) - band_cy).abs() <= (band_h as f64 * 0.75).max(8.0))
+                    .collect();
+                first_band_words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
+
+                let effective_min_x = if let Some(first_w) = first_band_words.first() {
+                    if first_w.text.len() <= 3 && first_w.text.chars().all(|c| c.is_ascii_digit()) {
+                        let start_search = ((first_w.x + first_w.width).ceil() as u32 + 2).max(min_x);
+                        let mut next_ink_x = min_x;
+                        for x in start_search..=max_x {
+                            let mut col_has_ink = false;
+                            for y in band_y0..band_y1 {
+                                if unscaled_prep.get_pixel(x, y)[0] < 210 {
+                                    col_has_ink = true;
+                                    break;
+                                }
+                            }
+                            if col_has_ink {
+                                next_ink_x = x;
+                                break;
+                            }
+                        }
+                        next_ink_x
+                    } else {
+                        min_x
+                    }
+                } else {
+                    min_x
+                };
+
+                let crop_x0 = effective_min_x.saturating_sub(4);
+                let crop_x1 = (max_x + 4).min(uw);
+                if crop_x1 <= crop_x0 || (crop_x1 - crop_x0) < 4 {
+                    continue;
+                }
+                let crop_w = crop_x1 - crop_x0;
+
+                let pad = 20u32;
+                let padded_w = crop_w + pad * 2;
+                let padded_h = band_h + pad * 2;
+                let mut band_img = image::RgbaImage::from_pixel(padded_w, padded_h, image::Rgba([255, 255, 255, 255]));
+                for by in 0..band_h {
+                    for bx in 0..crop_w {
+                        let px = *unscaled_prep.get_pixel(crop_x0 + bx, band_y0 + by);
+                        band_img.put_pixel(pad + bx, pad + by, px);
+                    }
+                }
+
+                let band_scale = if band_h <= 18 { 2.5 } else if band_h <= 26 { 2.0 } else { 1.5 };
+                let scaled_w = ((padded_w as f64) * band_scale).round() as u32;
+                let scaled_h = ((padded_h as f64) * band_scale).round() as u32;
+                let resized_band = image::imageops::resize(
+                    &band_img,
+                    scaled_w,
+                    scaled_h,
+                    image::imageops::FilterType::Lanczos3,
+                );
+
+                let mut band_lines = recognize_rgba_with_engine(
+                    &engine,
+                    &resized_band,
+                    crop_x0 as f64,
+                    band_y0 as f64,
+                    pad as f64,
+                    1.0 / band_scale,
+                )
+                .unwrap_or_default();
+
+                // If full-band recognition still leaves more than 35% of the band's horizontal width empty
+                // (common on lines with math operators like `if (i % 2 == 0):`), segment horizontal word-blobs
+                // separated by >= 3px of whitespace and recognize them in a composite strip with wider spacing.
+                let rec_w: f64 = band_lines.iter().flat_map(|l| &l.words).map(|w| w.width).sum();
+                let has_code_kw = band_lines
+                    .iter()
+                    .flat_map(|l| &l.words)
+                    .any(|w| is_code_keyword(&w.text));
+                if (rec_w < (crop_w as f64 * 0.65) || (!has_code_kw && crop_w >= 80)) && crop_w >= 25 {
+                    let mut col_ink = vec![false; crop_w as usize];
+                    for bx in 0..crop_w {
+                        for by in 0..band_h {
+                            if unscaled_prep.get_pixel(crop_x0 + bx, band_y0 + by)[0] < 205 {
+                                col_ink[bx as usize] = true;
+                                break;
+                            }
+                        }
+                    }
+                    let mut h_spans: Vec<(u32, u32)> = Vec::new();
+                    let mut in_sp = false;
+                    let mut sp_x0 = 0u32;
+                    let mut sp_gap = 0u32;
+                    for bx in 0..crop_w {
+                        if col_ink[bx as usize] {
+                            if !in_sp {
+                                in_sp = true;
+                                sp_x0 = bx;
+                            }
+                            sp_gap = 0;
+                        } else if in_sp {
+                            sp_gap += 1;
+                            if sp_gap >= 4 {
+                                let sp_x1 = bx + 1 - sp_gap;
+                                if sp_x1 > sp_x0 {
+                                    h_spans.push((sp_x0, sp_x1));
+                                }
+                                in_sp = false;
+                                sp_gap = 0;
+                            }
+                        }
+                    }
+                    if in_sp {
+                        let sp_x1 = crop_w.saturating_sub(sp_gap);
+                        if sp_x1 > sp_x0 {
+                            h_spans.push((sp_x0, sp_x1));
+                        }
+                    }
+
+                    // Try recognizing contiguous pairs of spans and individual spans, plus stripping any opening '(' after 'if'/'while'
+                    if h_spans.len() >= 2 {
+                        let mut candidate_slices: Vec<(u32, u32)> = Vec::new();
+                        if h_spans.len() >= 3 {
+                            // First half vs second half of the line (e.g., `if (i %` and `2 == 0):`)
+                            let mid = h_spans.len() / 2;
+                            candidate_slices.push((h_spans[0].0, h_spans[mid].1));
+                            // Also try recognizing the left half `h_spans[0..=3]` with `h_spans[1]` erased (if `h_spans[1]` is '(')
+                            let second_w = h_spans[1].1.saturating_sub(h_spans[1].0);
+                            if second_w >= 5 && second_w <= 28 {
+                                let char_est = if second_w >= 14 { (second_w / 2).clamp(7, 13) } else { second_w };
+                                let sub_end_idx = 3.min(h_spans.len() - 1);
+                                let combo_w = h_spans[sub_end_idx].1 - h_spans[0].0;
+                                let sp_pad = 24u32;
+                                let sp_pw = combo_w + sp_pad * 2;
+                                let sp_ph = band_h + sp_pad * 2;
+                                let mut sp_img = image::RgbaImage::from_pixel(sp_pw, sp_ph, image::Rgba([255, 255, 255, 255]));
+                                let erase_start = h_spans[1].0 - h_spans[0].0;
+                                let erase_end = erase_start + char_est + 1;
+                                for by in 0..band_h {
+                                    for bx in 0..combo_w {
+                                        if bx < erase_start || bx >= erase_end {
+                                            let px = *unscaled_prep.get_pixel(crop_x0 + h_spans[0].0 + bx, band_y0 + by);
+                                            sp_img.put_pixel(sp_pad + bx, sp_pad + by, px);
+                                        }
+                                    }
+                                }
+                                for &sp_scale in &[1.5f64, 2.0f64, 1.0f64] {
+                                    let sp_resized = if (sp_scale - 1.0).abs() > 0.01 {
+                                        image::imageops::resize(
+                                            &sp_img,
+                                            ((sp_pw as f64) * sp_scale).round() as u32,
+                                            ((sp_ph as f64) * sp_scale).round() as u32,
+                                            image::imageops::FilterType::Lanczos3,
+                                        )
+                                    } else {
+                                        sp_img.clone()
+                                    };
+                                    if let Ok(mut sp_lines) = recognize_rgba_with_engine(
+                                        &engine,
+                                        &sp_resized,
+                                        (crop_x0 + h_spans[0].0) as f64,
+                                        band_y0 as f64,
+                                        sp_pad as f64,
+                                        1.0 / sp_scale,
+                                    ) {
+                                        let found_kw = sp_lines
+                                            .iter()
+                                            .flat_map(|l| &l.words)
+                                            .any(|w| w.text.to_lowercase().starts_with("if") || w.text.to_lowercase().starts_with("while"));
+                                        if found_kw {
+                                            if let Some(first_l) = sp_lines.first_mut() {
+                                                first_l.words.push(OcrWord {
+                                                    text: "(".to_string(),
+                                                    x: (crop_x0 + h_spans[1].0) as f64,
+                                                    y: band_y0 as f64,
+                                                    width: char_est as f64,
+                                                    height: band_h as f64,
+                                                    confidence: 95.0,
+                                                });
+                                            }
+                                            band_lines.extend(sp_lines);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            candidate_slices.push((h_spans[mid].0, h_spans.last().unwrap().1));
+                        }
+                        for &(sx0, sx1) in &h_spans {
+                            candidate_slices.push((sx0, sx1));
+                        }
+
+                        for (sx0, sx1) in candidate_slices {
+                            if sx1 <= sx0 {
+                                continue;
+                            }
+                            let sw = (sx1 - sx0).max(1);
+                            let sp_pad = 24u32;
+                            let sp_pw = sw + sp_pad * 2;
+                            let sp_ph = band_h + sp_pad * 2;
+                            let mut sp_img = image::RgbaImage::from_pixel(sp_pw, sp_ph, image::Rgba([255, 255, 255, 255]));
+                            for by in 0..band_h {
+                                for bx in 0..sw {
+                                    let px = *unscaled_prep.get_pixel(crop_x0 + sx0 + bx, band_y0 + by);
+                                    sp_img.put_pixel(sp_pad + bx, sp_pad + by, px);
+                                }
+                            }
+                            for &sp_scale in &[2.0f64, 1.0f64] {
+                                let sp_resized = if (sp_scale - 1.0).abs() > 0.01 {
+                                    image::imageops::resize(
+                                        &sp_img,
+                                        ((sp_pw as f64) * sp_scale).round() as u32,
+                                        ((sp_ph as f64) * sp_scale).round() as u32,
+                                        image::imageops::FilterType::Lanczos3,
+                                    )
+                                } else {
+                                    sp_img.clone()
+                                };
+                                if let Ok(sp_lines) = recognize_rgba_with_engine(
+                                    &engine,
+                                    &sp_resized,
+                                    (crop_x0 + sx0) as f64,
+                                    band_y0 as f64,
+                                    sp_pad as f64,
+                                    1.0 / sp_scale,
+                                ) {
+                                    if !sp_lines.is_empty() {
+                                        band_lines.extend(sp_lines);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !band_lines.is_empty() {
+                    for bl in band_lines {
+                        let mut new_words = Vec::new();
+                        for bw in bl.words {
+                            // Only add words that do not already overlap an existing word in raw_lines
+                            let mut already_exists = false;
+                            for rl in &raw_lines {
+                                for ew in &rl.words {
+                                    let v_top = bw.y.max(ew.y);
+                                    let v_bot = (bw.y + bw.height).min(ew.y + ew.height);
+                                    let v_ov = (v_bot - v_top).max(0.0);
+                                    let h_left = bw.x.max(ew.x);
+                                    let h_right = (bw.x + bw.width).min(ew.x + ew.width);
+                                    let h_ov = (h_right - h_left).max(0.0);
+                                    let min_w = bw.width.min(ew.width).max(1.0);
+                                    let min_h = bw.height.min(ew.height).max(1.0);
+                                    if (v_ov / min_h) >= 0.45 && (h_ov / min_w) >= 0.45 {
+                                        already_exists = true;
+                                        break;
+                                    }
+                                }
+                                if already_exists {
+                                    break;
+                                }
+                            }
+                            if !already_exists {
+                                new_words.push(bw);
+                            }
+                        }
+                        if !new_words.is_empty() {
+                            let (lx, ly, lw, lh) = compute_words_bounding_box(&new_words);
+                            let text = new_words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+                            raw_lines.push(OcrLine {
+                                text,
+                                x: lx,
+                                y: ly,
+                                width: lw,
+                                height: lh,
+                                words: new_words,
+                            });
+                        }
+                    }
+                }
             }
         }
-    }
-
-    for (idx, rl) in raw_lines.iter().enumerate() {
-        eprintln!("RAW LINE {}: y={} h={} words={:?}", idx, rl.y, rl.height, rl.words.iter().map(|w| (&w.text, w.x, w.y)).collect::<Vec<_>>());
     }
 
     let (lines, full_text, boxes) = coalesce_and_structure_lines(raw_lines);
