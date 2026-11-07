@@ -5,7 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scripts/ocr_benchmark/**'
+      - 'scripts/ocr_benchmark/*.py'
+      - 'scripts/ocr_benchmark/requirements.txt'
+      - 'scripts/ocr_benchmark/manifest.json'
+      - 'scripts/ocr_benchmark/assets/**'
+      - 'tests/fixtures/**'
+      - 'package.json'
       - 'src-tauri/src/ocr.rs'
       - 'src-tauri/examples/ocr_diagnostic.rs'
       - 'tools/ocr-diagnostic/**'
@@ -63,7 +68,7 @@ jobs:
       - name: Test Rust
         id: rust-tests
         continue-on-error: true
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: cargo test --no-fail-fast --manifest-path src-tauri/Cargo.toml
       - name: Upload results and visual report
         if: always()
         uses: actions/upload-artifact@v4

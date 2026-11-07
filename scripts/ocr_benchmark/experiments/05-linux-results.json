@@ -1,0 +1,2010 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-07",
+  "platform": "linux",
+  "source_commit": "ab0f901",
+  "command": "python scripts/ocr_benchmark/run.py --output benchmark-results-linux-controlled --repeats 5 --diagnostic tools/ocr-diagnostic/target/debug/ocr_diagnostic",
+  "environment": {
+    "native_environment": {
+      "OMP_THREAD_LIMIT": "1"
+    },
+    "native_timeout_seconds": 120,
+    "platform": "Linux-7.0.0-42-generic-x86_64-with-glibc2.43",
+    "python": "3.12.14 (main, Sep  1 2026, 14:16:52) [Clang 22.1.3 ]",
+    "packages": {
+      "Pillow": "13.0.0",
+      "rapidocr": "3.10.0",
+      "onnxruntime": "1.31.1"
+    },
+    "tesseract_version": "tesseract 5.5.0\n leptonica-1.86.0\n  libgif 5.2.2 : libjpeg 8d (libjpeg-turbo 2.1.5) : libpng 1.6.57 : libtiff 4.7.0 : zlib 1.3.1 : libwebp 1.5.0 : libopenjp2 2.5.4\n Found AVX2\n Found AVX\n Found FMA\n Found SSE4.1\n Found OpenMP 201511\n Found libarchive 3.8.5 zlib/1.3.1 liblzma/5.8.3 bz2lib/1.0.8 liblz4/1.10.0 libzstd/1.5.7 nettle/3.10 libb2/bundled libacl/2.3.2 libattr/2.3.2\n Found libcurl/8.18.0 OpenSSL/3.5.5 zlib/1.3.1 brotli/1.2.0 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.2 libssh2/1.11.1 nghttp2/1.68.0 librtmp/2.3 mit-krb5/1.22.1 OpenLDAP/2.6.10",
+    "tesseract_languages": "List of available languages in \"/usr/share/tesseract-ocr/5/tessdata/\" (3):\neng\nosd\npor"
+  },
+  "repeats": 5,
+  "models": {
+    "det": {
+      "name": "ch_PP-OCRv5_det_mobile.onnx",
+      "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
+    },
+    "rec": {
+      "name": "latin_PP-OCRv5_rec_mobile.onnx",
+      "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx"
+    }
+  },
+  "summary": {
+    "original_raw": {
+      "weighted_cer": 0.20128022759601708,
+      "weighted_text_and_box_recall_iou50": 0.7264957264957265,
+      "expected_characters": 1406,
+      "expected_words": 234,
+      "weighted_cer_no_whitespace": 0.031315240083507306,
+      "median_of_case_warm_medians_ms": 523.646524
+    },
+    "preprocessed_raw": {
+      "weighted_cer": 0.19487908961593173,
+      "weighted_text_and_box_recall_iou50": 0.7777777777777778,
+      "expected_characters": 1406,
+      "expected_words": 234,
+      "weighted_cer_no_whitespace": 0.029227557411273485,
+      "median_of_case_warm_medians_ms": 1427.517148
+    },
+    "current_pipeline": {
+      "weighted_cer": 0.07183499288762446,
+      "weighted_text_and_box_recall_iou50": 0.7051282051282052,
+      "expected_characters": 1406,
+      "expected_words": 234,
+      "weighted_cer_no_whitespace": 0.05845511482254697,
+      "median_of_case_warm_medians_ms": 1369.3953514999998
+    },
+    "rapidocr_original_raw": {
+      "weighted_cer": 0.24822190611664297,
+      "weighted_text_and_box_recall_iou50": 0.8504273504273504,
+      "expected_characters": 1406,
+      "expected_words": 234,
+      "weighted_cer_no_whitespace": 0.009394572025052192,
+      "median_of_case_warm_medians_ms": 1217.6996079999753
+    }
+  },
+  "limitations": "Insufficient evidence for production promotion: small, repeated-content and overlay-contaminated dataset. Acquire clean held-out captures before any global engine decision.",
+  "cases": [
+    {
+      "id": "asimov_manual_overlay",
+      "provenance": "Existing screenshot crop, manually transcribed and word ink boxes manually annotated; blue OCR highlights already present in source; gutters and toolbar excluded. Not clean held-out acquisition.",
+      "source_sha256": "d4171e8c5a2ead6c68b75e574b97555fd1adf2058556a565f7cba27e53d51b98",
+      "font_sha256": null,
+      "runs": {
+        "original_raw": {
+          "full_text": "for i in range(10):\nifi%2=Õê0:\nprint(f(\"%i fis even\")\nelse:\nprint(f(\"%i is odd\")\nO is even\n1 is odd\n2 is even\nB is odd",
+          "metrics": {
+            "cer": 0.22758620689655173,
+            "cer_no_whitespace": 0.053763440860215055,
+            "exact_lines": 3,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.9583333333333334,
+            "word_box_recall_iou50": 0.7931034482758621,
+            "text_and_box_precision_iou50": 0.8333333333333334,
+            "text_and_box_recall_iou50": 0.6896551724137931,
+            "symbol_number_word_recall_iou50": 0.5714285714285714,
+            "expected_words": 29,
+            "predicted_words": 24,
+            "missing_or_wrong_words": [
+              "if",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "is",
+              "0",
+              "3"
+            ]
+          },
+          "timing": {
+            "first_ms": 753.508191,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              704.3141109999999,
+              750.46649,
+              703.251109,
+              730.4379739999999,
+              579.6387870000001
+            ],
+            "warm_median_ms": 704.3141109999999,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3623.907870000039,
+              3828.0084950001765,
+              3734.746135000023,
+              3524.8842420000983,
+              3624.712298999839,
+              3024.049815000126
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "for i in tange(16):\nifi%2 == 0:\nprint(f(\"%i is even\")\nelse:\nprint(f(\"%i is odd\")\nO is even\n1 is odd\n2 is even\n3 is odd",
+          "metrics": {
+            "cer": 0.20689655172413793,
+            "cer_no_whitespace": 0.03225806451612903,
+            "exact_lines": 3,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8846153846153846,
+            "word_box_recall_iou50": 0.7931034482758621,
+            "text_and_box_precision_iou50": 0.8076923076923077,
+            "text_and_box_recall_iou50": 0.7241379310344828,
+            "symbol_number_word_recall_iou50": 0.5714285714285714,
+            "expected_words": 29,
+            "predicted_words": 26,
+            "missing_or_wrong_words": [
+              "range(10):",
+              "if",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "0"
+            ]
+          },
+          "timing": {
+            "first_ms": 1287.814744,
+            "preprocessing_ms": 529.654667,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1538.89313,
+              1550.2068239999999,
+              1370.04287,
+              1491.9591639999999,
+              1182.6236880000001
+            ],
+            "warm_median_ms": 1491.9591639999999,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3623.907870000039,
+              3828.0084950001765,
+              3734.746135000023,
+              3524.8842420000983,
+              3624.712298999839,
+              3024.049815000126
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "for i in range(16):\n   ifi%2 ==\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")\nO is even\n1 is odd\n2 is even\n3 is odd",
+          "metrics": {
+            "cer": 0.09655172413793103,
+            "cer_no_whitespace": 0.043010752688172046,
+            "exact_lines": 3,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8666666666666667,
+            "word_box_recall_iou50": 0.896551724137931,
+            "text_and_box_precision_iou50": 0.7333333333333333,
+            "text_and_box_recall_iou50": 0.7586206896551724,
+            "symbol_number_word_recall_iou50": 0.5714285714285714,
+            "expected_words": 29,
+            "predicted_words": 30,
+            "missing_or_wrong_words": [
+              "range(10):",
+              "i",
+              "==",
+              "0:",
+              "print(f(\"%i",
+              "print(f(\"%i",
+              "0"
+            ]
+          },
+          "timing": {
+            "first_ms": 1480.5668220000002,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1496.813047,
+              1345.171855,
+              1405.6165549999998,
+              1303.853943,
+              1173.84719
+            ],
+            "warm_median_ms": 1345.171855,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3623.907870000039,
+              3828.0084950001765,
+              3734.746135000023,
+              3524.8842420000983,
+              3624.712298999839,
+              3024.049815000126
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "for i in range(10):\nif i % 2 == 0:\nprint(f(\"%i is even\")\nelse:\nprint(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+          "metrics": {
+            "cer": 0.16551724137931034,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 5,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8620689655172413,
+            "word_box_recall_iou50": 0.8620689655172413,
+            "text_and_box_precision_iou50": 0.8620689655172413,
+            "text_and_box_recall_iou50": 0.8620689655172413,
+            "symbol_number_word_recall_iou50": 0.8571428571428571,
+            "expected_words": 29,
+            "predicted_words": 29,
+            "missing_or_wrong_words": [
+              "i",
+              "in",
+              "%",
+              "1"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 1585.9971760000917,
+            "warm_ms": [
+              657.2245249999469,
+              704.434737000156,
+              723.8419629998134,
+              650.713517999975,
+              725.5644619999657
+            ],
+            "warm_median_ms": 704.434737000156,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "baseline_manual_overlay",
+      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data.",
+      "source_sha256": "22a6e958987418cacf1be1e802373c1438bce29bbfed9e8c59b80898798f41b3",
+      "font_sha256": null,
+      "runs": {
+        "original_raw": {
+          "full_text": "for il in range(10):\nif i% 2 ==\nprint(f(\"%i is even\")\nelse:\nprint(f(\"%il is odd\")",
+          "metrics": {
+            "cer": 0.2803738317757009,
+            "cer_no_whitespace": 0.05970149253731343,
+            "exact_lines": 0,
+            "expected_lines": 5,
+            "predicted_lines": 5,
+            "word_box_precision_iou50": 0.8666666666666667,
+            "word_box_recall_iou50": 0.7647058823529411,
+            "text_and_box_precision_iou50": 0.7333333333333333,
+            "text_and_box_recall_iou50": 0.6470588235294118,
+            "symbol_number_word_recall_iou50": 0.6,
+            "expected_words": 17,
+            "predicted_words": 15,
+            "missing_or_wrong_words": [
+              "i",
+              "i",
+              "%",
+              "==",
+              "0:",
+              "print(f(\"%i"
+            ]
+          },
+          "timing": {
+            "first_ms": 551.752613,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              543.139487,
+              848.579311,
+              545.0005629999999,
+              561.639469,
+              482.148233
+            ],
+            "warm_median_ms": 545.0005629999999,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              2272.007505000147,
+              2622.068379999746,
+              3334.8684239999784,
+              2774.9403480002,
+              2371.7009669999243,
+              2371.320648999699
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "for i in tange(16):\nif i % 2 == 0:\nprint(f(\"*%i is even\")\nelse:\nprint(f(\"%i is odd\")",
+          "metrics": {
+            "cer": 0.2523364485981308,
+            "cer_no_whitespace": 0.04477611940298507,
+            "exact_lines": 0,
+            "expected_lines": 5,
+            "predicted_lines": 5,
+            "word_box_precision_iou50": 0.8823529411764706,
+            "word_box_recall_iou50": 0.8823529411764706,
+            "text_and_box_precision_iou50": 0.7647058823529411,
+            "text_and_box_recall_iou50": 0.7647058823529411,
+            "symbol_number_word_recall_iou50": 0.6,
+            "expected_words": 17,
+            "predicted_words": 17,
+            "missing_or_wrong_words": [
+              "range(10):",
+              "==",
+              "0:",
+              "print(f(\"%i"
+            ]
+          },
+          "timing": {
+            "first_ms": 853.412381,
+            "preprocessing_ms": 275.471717,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              947.3162169999999,
+              1369.058444,
+              1057.536824,
+              873.5011049999999,
+              909.275881
+            ],
+            "warm_median_ms": 947.3162169999999,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              2272.007505000147,
+              2622.068379999746,
+              3334.8684239999784,
+              2774.9403480002,
+              2371.7009669999243,
+              2371.320648999699
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "for i in range(16):\n   if i % 2 ==\n      print(f(\"*%i is even\")\n   else:\n      print(f(\"%i is odd\")",
+          "metrics": {
+            "cer": 0.102803738317757,
+            "cer_no_whitespace": 0.05970149253731343,
+            "exact_lines": 0,
+            "expected_lines": 5,
+            "predicted_lines": 5,
+            "word_box_precision_iou50": 0.8333333333333334,
+            "word_box_recall_iou50": 0.8823529411764706,
+            "text_and_box_precision_iou50": 0.6666666666666666,
+            "text_and_box_recall_iou50": 0.7058823529411765,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 17,
+            "predicted_words": 18,
+            "missing_or_wrong_words": [
+              "range(10):",
+              "==",
+              "0:",
+              "print(f(\"%i",
+              "print(f(\"%i"
+            ]
+          },
+          "timing": {
+            "first_ms": 826.124656,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              919.837251,
+              1028.272217,
+              1097.706589,
+              896.66806,
+              933.3706149999999
+            ],
+            "warm_median_ms": 933.3706149999999,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              2272.007505000147,
+              2622.068379999746,
+              3334.8684239999784,
+              2774.9403480002,
+              2371.7009669999243,
+              2371.320648999699
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "for\ni\nin\nrange(10):\nif\nil\n%\n2\n==\n0:\nprint(f(\"%i\nis\neven\")\nelse:\nprint(f(\"%i\nis\nodd\" )",
+          "metrics": {
+            "cer": 0.35514018691588783,
+            "cer_no_whitespace": 0.014925373134328358,
+            "exact_lines": 0,
+            "expected_lines": 5,
+            "predicted_lines": 17,
+            "word_box_precision_iou50": 0.9444444444444444,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 0.8333333333333334,
+            "text_and_box_recall_iou50": 0.8823529411764706,
+            "symbol_number_word_recall_iou50": 0.9,
+            "expected_words": 17,
+            "predicted_words": 18,
+            "missing_or_wrong_words": [
+              "i",
+              "odd\")"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 1520.740707999721,
+            "warm_ms": [
+              1406.8585759996495,
+              1519.8660829996697,
+              1515.1360370000475,
+              1401.1662470002193,
+              1385.0841630001014
+            ],
+            "warm_median_ms": 1406.8585759996495,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "gutter_manual_overlay",
+      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data.",
+      "source_sha256": "a07f9ae7fa0a77e3ba99ae1dbeb097bfacd795752757e455ce6daf375e40330d",
+      "font_sha256": null,
+      "runs": {
+        "original_raw": {
+          "full_text": "for i in range(10):\nifi%2=Õê0:\nprint(f(\"%i is even\")\nElses\nprint(f(\"%i is odd\")\nO is even\nã is odd\n2 is even\n8 is odd",
+          "metrics": {
+            "cer": 0.2413793103448276,
+            "cer_no_whitespace": 0.07526881720430108,
+            "exact_lines": 2,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.9583333333333334,
+            "word_box_recall_iou50": 0.7931034482758621,
+            "text_and_box_precision_iou50": 0.7916666666666666,
+            "text_and_box_recall_iou50": 0.6551724137931034,
+            "symbol_number_word_recall_iou50": 0.42857142857142855,
+            "expected_words": 29,
+            "predicted_words": 24,
+            "missing_or_wrong_words": [
+              "if",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "else:",
+              "0",
+              "1",
+              "3"
+            ]
+          },
+          "timing": {
+            "first_ms": 631.252998,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              628.9986829999999,
+              641.856277,
+              612.0358970000001,
+              616.594607,
+              597.5544980000001
+            ],
+            "warm_median_ms": 616.594607,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3423.1837229999655,
+              3323.477898999954,
+              3273.6065819999567,
+              3574.413727999854,
+              3323.0869650001296,
+              3323.5990140001377
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "for i in range(26):\nifi%2 == 0:\nprint(f(\"%i is even\")\nelse:\nprint(f(\"%i is odd\")\nis even\nis odd\nis even\nis odd",
+          "metrics": {
+            "cer": 0.25517241379310346,
+            "cer_no_whitespace": 0.06451612903225806,
+            "exact_lines": 0,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8636363636363636,
+            "word_box_recall_iou50": 0.6551724137931034,
+            "text_and_box_precision_iou50": 0.8181818181818182,
+            "text_and_box_recall_iou50": 0.6206896551724138,
+            "symbol_number_word_recall_iou50": 0.35714285714285715,
+            "expected_words": 29,
+            "predicted_words": 22,
+            "missing_or_wrong_words": [
+              "range(10):",
+              "if",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "0",
+              "1",
+              "2",
+              "3"
+            ]
+          },
+          "timing": {
+            "first_ms": 1351.935428,
+            "preprocessing_ms": 554.439211,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1332.970195,
+              1295.19025,
+              1478.320609,
+              1288.789111,
+              1265.617895
+            ],
+            "warm_median_ms": 1295.19025,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3423.1837229999655,
+              3323.477898999954,
+              3273.6065819999567,
+              3574.413727999854,
+              3323.0869650001296,
+              3323.5990140001377
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "for i in\n   ifi%2 ==\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")\n0 is even\n  is odd\n0 is even\n  is odd",
+          "metrics": {
+            "cer": 0.1793103448275862,
+            "cer_no_whitespace": 0.16129032258064516,
+            "exact_lines": 1,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8148148148148148,
+            "word_box_recall_iou50": 0.7586206896551724,
+            "text_and_box_precision_iou50": 0.7037037037037037,
+            "text_and_box_recall_iou50": 0.6551724137931034,
+            "symbol_number_word_recall_iou50": 0.35714285714285715,
+            "expected_words": 29,
+            "predicted_words": 27,
+            "missing_or_wrong_words": [
+              "range(10):",
+              "i",
+              "2",
+              "==",
+              "0:",
+              "print(f(\"%i",
+              "print(f(\"%i",
+              "1",
+              "2",
+              "3"
+            ]
+          },
+          "timing": {
+            "first_ms": 1357.5746040000001,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1281.593184,
+              1278.893174,
+              1432.903162,
+              1344.503278,
+              1374.177259
+            ],
+            "warm_median_ms": 1344.503278,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3423.1837229999655,
+              3323.477898999954,
+              3273.6065819999567,
+              3574.413727999854,
+              3323.0869650001296,
+              3323.5990140001377
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "for i in range(10):\nif i % 2 == 0:\nprint(f(\"%i is even\")\nelse:\nprint(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+          "metrics": {
+            "cer": 0.16551724137931034,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 5,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8620689655172413,
+            "word_box_recall_iou50": 0.8620689655172413,
+            "text_and_box_precision_iou50": 0.8620689655172413,
+            "text_and_box_recall_iou50": 0.8620689655172413,
+            "symbol_number_word_recall_iou50": 0.7857142857142857,
+            "expected_words": 29,
+            "predicted_words": 29,
+            "missing_or_wrong_words": [
+              "i",
+              "%",
+              "2",
+              "3"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 836.1828479996802,
+            "warm_ms": [
+              761.5788829998564,
+              753.3911269997589,
+              933.497177999925,
+              829.6885350000593,
+              784.2878510000446
+            ],
+            "warm_median_ms": 784.2878510000446,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "existing_vscode_dark",
+      "provenance": "Existing editor-style fixture; provenance of acquisition unverified, not counted as an independently captured real screenshot. Manually transcribed with approximate word ink bounds; gutter excluded.",
+      "source_sha256": "4b9d951ba2bcab8aaa4deeddc95cb862a26cbc7335b3b2b90ce47a041baf3ffa",
+      "font_sha256": null,
+      "runs": {
+        "original_raw": {
+          "full_text": "def check numbers(limit: int):\nfor i in range(limit):\nifi%2=0:\nprint(f\"%i is even\")\nelse:\nprint(f\"%i is odd\")\nifil=o:\npass",
+          "metrics": {
+            "cer": 0.38974358974358975,
+            "cer_no_whitespace": 0.037383177570093455,
+            "exact_lines": 0,
+            "expected_lines": 8,
+            "predicted_lines": 8,
+            "word_box_precision_iou50": 0.8333333333333334,
+            "word_box_recall_iou50": 0.6,
+            "text_and_box_precision_iou50": 0.7777777777777778,
+            "text_and_box_recall_iou50": 0.56,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 25,
+            "predicted_words": 18,
+            "missing_or_wrong_words": [
+              "check_numbers(limit:",
+              "if",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "if",
+              "i",
+              "!=",
+              "0:"
+            ]
+          },
+          "timing": {
+            "first_ms": 592.212312,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              636.6117380000001,
+              548.247126,
+              618.354754,
+              522.127245,
+              543.672002
+            ],
+            "warm_median_ms": 548.247126,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3323.374246000185,
+              3527.2121049997622,
+              3123.2301790000747,
+              3224.419348000083,
+              2873.518981000416,
+              2872.8939190000347
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "def check numbers(limit: int):\nfor i in range(limit):\nif i% 2 == 2:\nprint(f\"%i is even”)\nelse:\nprint(f\"%i is odd\")\nif i !=@:\npass",
+          "metrics": {
+            "cer": 0.358974358974359,
+            "cer_no_whitespace": 0.037383177570093455,
+            "exact_lines": 0,
+            "expected_lines": 8,
+            "predicted_lines": 8,
+            "word_box_precision_iou50": 0.7916666666666666,
+            "word_box_recall_iou50": 0.76,
+            "text_and_box_precision_iou50": 0.7083333333333334,
+            "text_and_box_recall_iou50": 0.68,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 25,
+            "predicted_words": 24,
+            "missing_or_wrong_words": [
+              "check_numbers(limit:",
+              "i",
+              "%",
+              "==",
+              "0:",
+              "even\")",
+              "!=",
+              "0:"
+            ]
+          },
+          "timing": {
+            "first_ms": 1308.029751,
+            "preprocessing_ms": 582.245341,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1405.077405,
+              1273.4094099999998,
+              1323.6162009999998,
+              1171.3345100000001,
+              1099.451788
+            ],
+            "warm_median_ms": 1273.4094099999998,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3323.374246000185,
+              3527.2121049997622,
+              3123.2301790000747,
+              3224.419348000083,
+              2873.518981000416,
+              2872.8939190000347
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "def checknumbers(limit: int):\n    for i in range(limit):\n        if i% 2\n            print(f\"%i is even\")\n        else:\n            print(f\"%i is odd\")\n        if i !=@:\n            pass",
+          "metrics": {
+            "cer": 0.05128205128205128,
+            "cer_no_whitespace": 0.056074766355140186,
+            "exact_lines": 5,
+            "expected_lines": 8,
+            "predicted_lines": 8,
+            "word_box_precision_iou50": 0.7857142857142857,
+            "word_box_recall_iou50": 0.88,
+            "text_and_box_precision_iou50": 0.6071428571428571,
+            "text_and_box_recall_iou50": 0.68,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 25,
+            "predicted_words": 28,
+            "missing_or_wrong_words": [
+              "check_numbers(limit:",
+              "int):",
+              "i",
+              "==",
+              "0:",
+              "print(f\"%i",
+              "print(f\"%i",
+              "0:"
+            ]
+          },
+          "timing": {
+            "first_ms": 1339.33131,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1438.081417,
+              1256.6804,
+              1205.2484889999998,
+              1110.1443319999998,
+              1171.625703
+            ],
+            "warm_median_ms": 1205.2484889999998,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3323.374246000185,
+              3527.2121049997622,
+              3123.2301790000747,
+              3224.419348000083,
+              2873.518981000416,
+              2872.8939190000347
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "def\ncheck_numbers(limit:\nint):\nfor\nin\nrange(limit):\nif :\ni % 2 ==\n0:\nprint(f\"%i\nis\neven\")\nelse:\nprint(f\"%i\nis \nodd\")\nif\ni\n!= 0:\npass",
+          "metrics": {
+            "cer": 0.40512820512820513,
+            "cer_no_whitespace": 0.018691588785046728,
+            "exact_lines": 0,
+            "expected_lines": 8,
+            "predicted_lines": 20,
+            "word_box_precision_iou50": 0.92,
+            "word_box_recall_iou50": 0.92,
+            "text_and_box_precision_iou50": 0.92,
+            "text_and_box_recall_iou50": 0.92,
+            "symbol_number_word_recall_iou50": 0.9285714285714286,
+            "expected_words": 25,
+            "predicted_words": 25,
+            "missing_or_wrong_words": [
+              "i",
+              "%"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 1032.0086170004288,
+            "warm_ms": [
+              988.2742760000838,
+              1004.3849980002051,
+              1081.184187999952,
+              980.6510940002227,
+              976.231937999728
+            ],
+            "warm_median_ms": 988.2742760000838,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "existing_vscode_light",
+      "provenance": "Existing editor-style fixture; provenance of acquisition unverified, not counted as an independently captured real screenshot. Manually transcribed with approximate word ink bounds; gutter excluded.",
+      "source_sha256": "5254068e9fad0a2059a369730a8088643de342ab010b66c3bfcc2c91d0355b85",
+      "font_sha256": null,
+      "runs": {
+        "original_raw": {
+          "full_text": "def check numbers(limit: int):\nfor i in range(limit):\nifi%2= 0:\nprint(f\"%i is even\")\nelse:\nprint(f\"%i is odd\")\nifil=o:\npass",
+          "metrics": {
+            "cer": 0.38461538461538464,
+            "cer_no_whitespace": 0.037383177570093455,
+            "exact_lines": 0,
+            "expected_lines": 8,
+            "predicted_lines": 8,
+            "word_box_precision_iou50": 0.7894736842105263,
+            "word_box_recall_iou50": 0.6,
+            "text_and_box_precision_iou50": 0.7368421052631579,
+            "text_and_box_recall_iou50": 0.56,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 25,
+            "predicted_words": 19,
+            "missing_or_wrong_words": [
+              "check_numbers(limit:",
+              "if",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "if",
+              "i",
+              "!=",
+              "0:"
+            ]
+          },
+          "timing": {
+            "first_ms": 386.523993,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              400.163245,
+              435.458032,
+              402.912986,
+              452.007185,
+              456.72787
+            ],
+            "warm_median_ms": 435.458032,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              2922.560375000103,
+              3073.2803549999517,
+              3173.6657920000653,
+              2973.1525830002283,
+              3173.8810610004293,
+              2972.6332700001876
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "def check numbers (limit: int):\nfor i in range(limit):\nif i%2 == 920:\nprint(f\"%i is even\"\nelse:\nprint(f\"%i is odd\")\nif i != 0:\npass",
+          "metrics": {
+            "cer": 0.3641025641025641,
+            "cer_no_whitespace": 0.037383177570093455,
+            "exact_lines": 0,
+            "expected_lines": 8,
+            "predicted_lines": 8,
+            "word_box_precision_iou50": 0.76,
+            "word_box_recall_iou50": 0.76,
+            "text_and_box_precision_iou50": 0.72,
+            "text_and_box_recall_iou50": 0.72,
+            "symbol_number_word_recall_iou50": 0.5714285714285714,
+            "expected_words": 25,
+            "predicted_words": 25,
+            "missing_or_wrong_words": [
+              "check_numbers(limit:",
+              "i",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "even\")"
+            ]
+          },
+          "timing": {
+            "first_ms": 1209.7283419999999,
+            "preprocessing_ms": 496.644858,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1225.346294,
+              1310.4183130000001,
+              1267.0365590000001,
+              1286.3827390000001,
+              1213.303606
+            ],
+            "warm_median_ms": 1267.0365590000001,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              2922.560375000103,
+              3073.2803549999517,
+              3173.6657920000653,
+              2973.1525830002283,
+              3173.8810610004293,
+              2972.6332700001876
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "def check        int):\n    for i in range(limit):\n        if i%2\n            print(f\"%i is even\"\n        else:\n            print(f\"%i is odd\")\n        if i != 0:\n            pass",
+          "metrics": {
+            "cer": 0.12307692307692308,
+            "cer_no_whitespace": 0.18691588785046728,
+            "exact_lines": 5,
+            "expected_lines": 8,
+            "predicted_lines": 8,
+            "word_box_precision_iou50": 0.6785714285714286,
+            "word_box_recall_iou50": 0.76,
+            "text_and_box_precision_iou50": 0.5357142857142857,
+            "text_and_box_recall_iou50": 0.6,
+            "symbol_number_word_recall_iou50": 0.35714285714285715,
+            "expected_words": 25,
+            "predicted_words": 28,
+            "missing_or_wrong_words": [
+              "check_numbers(limit:",
+              "int):",
+              "i",
+              "2",
+              "==",
+              "0:",
+              "print(f\"%i",
+              "even\")",
+              "print(f\"%i",
+              "0:"
+            ]
+          },
+          "timing": {
+            "first_ms": 1247.361889,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1368.989016,
+              1370.5111940000002,
+              1226.3007539999999,
+              1363.392866,
+              1221.6725450000001
+            ],
+            "warm_median_ms": 1363.392866,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              2922.560375000103,
+              3073.2803549999517,
+              3173.6657920000653,
+              2973.1525830002283,
+              3173.8810610004293,
+              2972.6332700001876
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "def\ncheck_numbers(limit:\nint):\nfor i in range(limit):\nif i % 2 == 0:\nprint(f\"%i\nis even\")\nelse:\nprint(f\"%i\nis odd\")\nif i\n!= 0:\npass",
+          "metrics": {
+            "cer": 0.35384615384615387,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 0,
+            "expected_lines": 8,
+            "predicted_lines": 13,
+            "word_box_precision_iou50": 0.88,
+            "word_box_recall_iou50": 0.88,
+            "text_and_box_precision_iou50": 0.88,
+            "text_and_box_recall_iou50": 0.88,
+            "symbol_number_word_recall_iou50": 0.9285714285714286,
+            "expected_words": 25,
+            "predicted_words": 25,
+            "missing_or_wrong_words": [
+              "i",
+              "i",
+              "%"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 879.6408049997808,
+            "warm_ms": [
+              929.1682640000545,
+              858.9883439999539,
+              933.772375999979,
+              864.3641959997694,
+              934.2491519996656
+            ],
+            "warm_median_ms": 929.1682640000545,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "user_report_2026_11_07",
+      "provenance": "Exact image attached by user on 2026-11-07, manually transcribed with approximate word ink bounds. Existing DeskLens highlights contaminate image. Shares Asimov content with three other cases; not clean held-out acquisition.",
+      "source_sha256": "2ee3d43c71a0ac8d63c29ba125d4fc67c4cadf73a103790f0fc6c42379527359",
+      "font_sha256": null,
+      "runs": {
+        "original_raw": {
+          "full_text": "for i in range(10):\nii i %2== 0:\nprint(f(\"%i even\")\nelse:\nprint(f(\"%i is odd\")\n© is even\n1 is odd\n2 is even\n3 is odd",
+          "metrics": {
+            "cer": 0.21379310344827587,
+            "cer_no_whitespace": 0.043010752688172046,
+            "exact_lines": 4,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.7307692307692307,
+            "word_box_recall_iou50": 0.6551724137931034,
+            "text_and_box_precision_iou50": 0.6538461538461539,
+            "text_and_box_recall_iou50": 0.5862068965517241,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 29,
+            "predicted_words": 26,
+            "missing_or_wrong_words": [
+              "for",
+              "in",
+              "if",
+              "%",
+              "2",
+              "==",
+              "0:",
+              "is",
+              "print(f(\"%i",
+              "is",
+              "odd\")",
+              "0"
+            ]
+          },
+          "timing": {
+            "first_ms": 677.901151,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              655.00185,
+              668.959396,
+              691.588808,
+              683.839762,
+              695.869038
+            ],
+            "warm_median_ms": 683.839762,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              5329.255366000325,
+              5228.927065000335,
+              5429.852509000284,
+              5379.928318000111,
+              5279.160397999931,
+              5479.45526500007
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "for i if range(10):\nif i% 2 == 0:\nprint(f(\"%i is even\")\nelse:\nprint(f(\"%i is odd\")\nis even\nis odd\nis even\nis odd",
+          "metrics": {
+            "cer": 0.23448275862068965,
+            "cer_no_whitespace": 0.053763440860215055,
+            "exact_lines": 0,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.9166666666666666,
+            "word_box_recall_iou50": 0.7586206896551724,
+            "text_and_box_precision_iou50": 0.875,
+            "text_and_box_recall_iou50": 0.7241379310344828,
+            "symbol_number_word_recall_iou50": 0.5714285714285714,
+            "expected_words": 29,
+            "predicted_words": 24,
+            "missing_or_wrong_words": [
+              "in",
+              "i",
+              "%",
+              "==",
+              "0",
+              "1",
+              "2",
+              "3"
+            ]
+          },
+          "timing": {
+            "first_ms": 2273.761156,
+            "preprocessing_ms": 1123.11375,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              2196.6533120000004,
+              2375.273017,
+              2301.6601119999996,
+              2284.1110289999997,
+              2385.594812
+            ],
+            "warm_median_ms": 2301.6601119999996,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              5329.255366000325,
+              5228.927065000335,
+              5429.852509000284,
+              5379.928318000111,
+              5279.160397999931,
+              5479.45526500007
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "for i if range(10):\n   if i% 2 == 0:\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")\n0 is even\n  is odd\n0 is even\n  is odd",
+          "metrics": {
+            "cer": 0.07586206896551724,
+            "cer_no_whitespace": 0.043010752688172046,
+            "exact_lines": 1,
+            "expected_lines": 9,
+            "predicted_lines": 9,
+            "word_box_precision_iou50": 0.8,
+            "word_box_recall_iou50": 0.8275862068965517,
+            "text_and_box_precision_iou50": 0.6666666666666666,
+            "text_and_box_recall_iou50": 0.6896551724137931,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 29,
+            "predicted_words": 30,
+            "missing_or_wrong_words": [
+              "in",
+              "i",
+              "==",
+              "0:",
+              "print(f(\"%i",
+              "print(f(\"%i",
+              "1",
+              "2",
+              "3"
+            ]
+          },
+          "timing": {
+            "first_ms": 2265.39047,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              2260.0380179999997,
+              2278.403474,
+              2276.603165,
+              2224.415858,
+              2291.3082839999997
+            ],
+            "warm_median_ms": 2276.603165,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              5329.255366000325,
+              5228.927065000335,
+              5429.852509000284,
+              5379.928318000111,
+              5279.160397999931,
+              5479.45526500007
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "for\ni in\nrange(10):\nif i % 2 == 0:\nprint(f(\"%i\nis\neven\")\nelse:\nprint(f(\"%i\nis odd\")\nis\neven\n1\nis\nodd\nis\neven\nis odd",
+          "metrics": {
+            "cer": 0.2689655172413793,
+            "cer_no_whitespace": 0.03225806451612903,
+            "exact_lines": 0,
+            "expected_lines": 9,
+            "predicted_lines": 18,
+            "word_box_precision_iou50": 0.7692307692307693,
+            "word_box_recall_iou50": 0.6896551724137931,
+            "text_and_box_precision_iou50": 0.7692307692307693,
+            "text_and_box_recall_iou50": 0.6896551724137931,
+            "symbol_number_word_recall_iou50": 0.6428571428571429,
+            "expected_words": 29,
+            "predicted_words": 26,
+            "missing_or_wrong_words": [
+              "i",
+              "if",
+              "i",
+              "%",
+              "2",
+              "is",
+              "0",
+              "2",
+              "3"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 1118.0772849997993,
+            "warm_ms": [
+              1028.5406400003012,
+              1088.8860170002772,
+              1156.684081000094,
+              1023.3017580003434,
+              1003.7817289999111
+            ],
+            "warm_median_ms": 1028.5406400003012,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "synthetic_pt_dark",
+      "provenance": "Synthetic, generated with Pillow; exact font-metric boxes (not manually annotated screenshots).",
+      "source_sha256": null,
+      "font_sha256": "a54dca07c76d6289e717e75e0a58c0128f6d7269ef3faf76417c9d7d3bba37ab",
+      "runs": {
+        "original_raw": {
+          "full_text": "A tradução mantém acentos: ação, órgão, café\nNúmero do pedido: 2026; preço R$ 19,90.\nOlá, você consegue ler cada palavra?",
+          "metrics": {
+            "cer": 0.00819672131147541,
+            "cer_no_whitespace": 0.009708737864077669,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 1.0,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 0.95,
+            "text_and_box_recall_iou50": 0.95,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": [
+              "café."
+            ]
+          },
+          "timing": {
+            "first_ms": 442.430868,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              454.461402,
+              460.559473,
+              473.99127899999996,
+              447.743648,
+              458.72605599999997
+            ],
+            "warm_median_ms": 458.72605599999997,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3473.9555090000067,
+              3374.2454939997515,
+              3223.867695000081,
+              3373.9872689998265,
+              3423.6444349999147,
+              3323.585603999618
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "À tradução mantém acentos: ação, órgão, café.\nNúmero do pedido: 2026; preço R$ 19,90.\nOlá, você consegue ler cada palavra?",
+          "metrics": {
+            "cer": 0.00819672131147541,
+            "cer_no_whitespace": 0.009708737864077669,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 1.0,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 0.95,
+            "text_and_box_recall_iou50": 0.95,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": [
+              "A"
+            ]
+          },
+          "timing": {
+            "first_ms": 1518.065775,
+            "preprocessing_ms": 808.20287,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1486.8818380000002,
+              1373.617364,
+              1443.2590420000001,
+              1473.895098,
+              1451.495692
+            ],
+            "warm_median_ms": 1451.495692,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3473.9555090000067,
+              3374.2454939997515,
+              3223.867695000081,
+              3373.9872689998265,
+              3423.6444349999147,
+              3323.585603999618
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "À tradução mantém acentos: ação, órgão, café.\nNúmero do pedido: 2026; preço R$ 19,90.\nOlá, você consegue ler cada palavra?",
+          "metrics": {
+            "cer": 0.00819672131147541,
+            "cer_no_whitespace": 0.009708737864077669,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.7037037037037037,
+            "word_box_recall_iou50": 0.95,
+            "text_and_box_precision_iou50": 0.48148148148148145,
+            "text_and_box_recall_iou50": 0.65,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 20,
+            "predicted_words": 27,
+            "missing_or_wrong_words": [
+              "A",
+              "ação,",
+              "órgão,",
+              "2026;",
+              "19,90.",
+              "Olá,",
+              "palavra?"
+            ]
+          },
+          "timing": {
+            "first_ms": 1448.356553,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1353.498327,
+              1334.402339,
+              1392.7862719999998,
+              1431.387899,
+              1375.397837
+            ],
+            "warm_median_ms": 1375.397837,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3473.9555090000067,
+              3374.2454939997515,
+              3223.867695000081,
+              3373.9872689998265,
+              3423.6444349999147,
+              3323.585603999618
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "A\ntradução\nmantém\nacentos:\nação,\nórgão,\ncafé.\nNúmero\ndo\npedido:\n2026;\npreço\nR$\n19,90.\n0lá,\nvocê\nconsegue\nler\ncada\npalavra?",
+          "metrics": {
+            "cer": 0.14754098360655737,
+            "cer_no_whitespace": 0.009708737864077669,
+            "exact_lines": 0,
+            "expected_lines": 3,
+            "predicted_lines": 20,
+            "word_box_precision_iou50": 1.0,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 0.95,
+            "text_and_box_recall_iou50": 0.95,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": [
+              "Olá,"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 2201.461655999992,
+            "warm_ms": [
+              2339.8356030002105,
+              2193.7202230001276,
+              2040.4982509999172,
+              2095.658598999762,
+              2224.179704999642
+            ],
+            "warm_median_ms": 2193.7202230001276,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "synthetic_pt_light",
+      "provenance": "Synthetic, generated with Pillow; exact font-metric boxes (not manually annotated screenshots).",
+      "source_sha256": null,
+      "font_sha256": "a54dca07c76d6289e717e75e0a58c0128f6d7269ef3faf76417c9d7d3bba37ab",
+      "runs": {
+        "original_raw": {
+          "full_text": "A tradução mantém acentos: ação, órgão, café\nNúmero do pedido: 2026; preço R$ 19,90.\nOlá, você consegue ler cada palavra?",
+          "metrics": {
+            "cer": 0.00819672131147541,
+            "cer_no_whitespace": 0.009708737864077669,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 1.0,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 0.95,
+            "text_and_box_recall_iou50": 0.95,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": [
+              "café."
+            ]
+          },
+          "timing": {
+            "first_ms": 380.388554,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              395.219817,
+              391.56192400000003,
+              394.185591,
+              435.27754699999997,
+              379.311163
+            ],
+            "warm_median_ms": 394.185591,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3423.9132070001688,
+              3323.9218470002925,
+              3323.451635999845,
+              3323.805830999845,
+              3474.859190999723,
+              3173.2928779997565
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "A tradução mantém acentos: ação, órgão, café.\nNúmero do pedido: 2026; preço R$ 19,90.\nOlá, você consegue ler cada palavra?",
+          "metrics": {
+            "cer": 0.0,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 3,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 1.0,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 1.0,
+            "text_and_box_recall_iou50": 1.0,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": []
+          },
+          "timing": {
+            "first_ms": 1481.366152,
+            "preprocessing_ms": 774.27534,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1402.03291,
+              1439.774441,
+              1469.366141,
+              1538.798418,
+              1360.569857
+            ],
+            "warm_median_ms": 1439.774441,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3423.9132070001688,
+              3323.9218470002925,
+              3323.451635999845,
+              3323.805830999845,
+              3474.859190999723,
+              3173.2928779997565
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "A tradução mantém acentos: ação, órgão, café.\nNúmero do pedido: 2026; preço R$ 19,90.\nOlá, você consegue ler cada palavra?",
+          "metrics": {
+            "cer": 0.0,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 3,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.7037037037037037,
+            "word_box_recall_iou50": 0.95,
+            "text_and_box_precision_iou50": 0.5185185185185185,
+            "text_and_box_recall_iou50": 0.7,
+            "symbol_number_word_recall_iou50": 0.5,
+            "expected_words": 20,
+            "predicted_words": 27,
+            "missing_or_wrong_words": [
+              "ação,",
+              "órgão,",
+              "2026;",
+              "19,90.",
+              "Olá,",
+              "palavra?"
+            ]
+          },
+          "timing": {
+            "first_ms": 1492.2106130000002,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1448.077165,
+              1450.930699,
+              1384.597678,
+              1442.331752,
+              1396.5406229999999
+            ],
+            "warm_median_ms": 1442.331752,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3423.9132070001688,
+              3323.9218470002925,
+              3323.451635999845,
+              3323.805830999845,
+              3474.859190999723,
+              3173.2928779997565
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "A\ntradução\nmantém\nacentos:\nação ,\nórgão,\ncafé.\nNúmero\ndo\npedido:\n2026;\npreço\nR$\n19,90.\n0lá,\nvocê\nconsegue\nler\ncada\npalavra?",
+          "metrics": {
+            "cer": 0.1557377049180328,
+            "cer_no_whitespace": 0.009708737864077669,
+            "exact_lines": 0,
+            "expected_lines": 3,
+            "predicted_lines": 20,
+            "word_box_precision_iou50": 0.9523809523809523,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 0.8571428571428571,
+            "text_and_box_recall_iou50": 0.9,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 21,
+            "missing_or_wrong_words": [
+              "ação,",
+              "Olá,"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 1967.0709990000432,
+            "warm_ms": [
+              2108.4736560001147,
+              1978.633209000236,
+              2183.6018229996625,
+              1970.2003590000459,
+              2023.521074999735
+            ],
+            "warm_median_ms": 2023.521074999735,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "synthetic_en_dark",
+      "provenance": "Synthetic, generated with Pillow; exact font-metric boxes (not manually annotated screenshots).",
+      "source_sha256": null,
+      "font_sha256": "a54dca07c76d6289e717e75e0a58c0128f6d7269ef3faf76417c9d7d3bba37ab",
+      "runs": {
+        "original_raw": {
+          "full_text": "Read every word without changing the source.\nInvoice number: 2026; total $19.90.\nCode: if i % 2 ==0: print(\"even\")",
+          "metrics": {
+            "cer": 0.008695652173913044,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.9473684210526315,
+            "word_box_recall_iou50": 0.9,
+            "text_and_box_precision_iou50": 0.9473684210526315,
+            "text_and_box_recall_iou50": 0.9,
+            "symbol_number_word_recall_iou50": 0.7777777777777778,
+            "expected_words": 20,
+            "predicted_words": 19,
+            "missing_or_wrong_words": [
+              "==",
+              "0:"
+            ]
+          },
+          "timing": {
+            "first_ms": 504.135471,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              523.330431,
+              526.842902,
+              490.893369,
+              496.676359,
+              502.292485
+            ],
+            "warm_median_ms": 502.292485,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3323.609002000012,
+              3474.033388999942,
+              3574.6688090002863,
+              3524.4613169998047,
+              3474.077882000074,
+              3376.143310000316
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "Read every word without changing the source.\nInvoice number: 2026; total $19.90.\nCode: if i%2 == 9: print{\"even\")",
+          "metrics": {
+            "cer": 0.034782608695652174,
+            "cer_no_whitespace": 0.020833333333333332,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.9444444444444444,
+            "word_box_recall_iou50": 0.85,
+            "text_and_box_precision_iou50": 0.8333333333333334,
+            "text_and_box_recall_iou50": 0.75,
+            "symbol_number_word_recall_iou50": 0.5555555555555556,
+            "expected_words": 20,
+            "predicted_words": 18,
+            "missing_or_wrong_words": [
+              "i",
+              "%",
+              "2",
+              "0:",
+              "print(\"even\")"
+            ]
+          },
+          "timing": {
+            "first_ms": 1405.500608,
+            "preprocessing_ms": 726.769883,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1414.078182,
+              1478.2496449999999,
+              1419.6422710000002,
+              1415.259855,
+              1392.6000589999999
+            ],
+            "warm_median_ms": 1415.259855,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3323.609002000012,
+              3474.033388999942,
+              3574.6688090002863,
+              3524.4613169998047,
+              3474.077882000074,
+              3376.143310000316
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "Read every word without changing the source.\nInvoice number: 2026; total $19.90.\nCode: if i%2 == 9: print{\"even\")",
+          "metrics": {
+            "cer": 0.034782608695652174,
+            "cer_no_whitespace": 0.020833333333333332,
+            "exact_lines": 2,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.782608695652174,
+            "word_box_recall_iou50": 0.9,
+            "text_and_box_precision_iou50": 0.6956521739130435,
+            "text_and_box_recall_iou50": 0.8,
+            "symbol_number_word_recall_iou50": 0.6666666666666666,
+            "expected_words": 20,
+            "predicted_words": 23,
+            "missing_or_wrong_words": [
+              "2026;",
+              "i",
+              "0:",
+              "print(\"even\")"
+            ]
+          },
+          "timing": {
+            "first_ms": 1380.788845,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1454.183687,
+              1525.8121660000002,
+              1539.5665960000001,
+              1514.456494,
+              1430.300939
+            ],
+            "warm_median_ms": 1514.456494,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3323.609002000012,
+              3474.033388999942,
+              3574.6688090002863,
+              3524.4613169998047,
+              3474.077882000074,
+              3376.143310000316
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "Read\nevery\nwo rd\nwithout\nchanging\nthe\nsource.\nInvoice\nnumber:\n2026;\ntotal\n$19.90.\nCode:\nif\ni %\n2\n==\n0:\nprint(\"even\")",
+          "metrics": {
+            "cer": 0.14782608695652175,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 0,
+            "expected_lines": 3,
+            "predicted_lines": 19,
+            "word_box_precision_iou50": 0.7727272727272727,
+            "word_box_recall_iou50": 0.85,
+            "text_and_box_precision_iou50": 0.7727272727272727,
+            "text_and_box_recall_iou50": 0.85,
+            "symbol_number_word_recall_iou50": 0.7777777777777778,
+            "expected_words": 20,
+            "predicted_words": 22,
+            "missing_or_wrong_words": [
+              "word",
+              "2",
+              "=="
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 2067.8362649996416,
+            "warm_ms": [
+              1919.272324999838,
+              2068.669890000365,
+              1913.6185520001163,
+              2052.4638259998937,
+              1960.4078659999686
+            ],
+            "warm_median_ms": 1960.4078659999686,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    },
+    {
+      "id": "synthetic_en_light",
+      "provenance": "Synthetic, generated with Pillow; exact font-metric boxes (not manually annotated screenshots).",
+      "source_sha256": null,
+      "font_sha256": "a54dca07c76d6289e717e75e0a58c0128f6d7269ef3faf76417c9d7d3bba37ab",
+      "runs": {
+        "original_raw": {
+          "full_text": "Read every word without changing the source.\nInvoice number: 2026; total $19.90.\nCode: if i % 2 == 0: print(\"even\")",
+          "metrics": {
+            "cer": 0.0,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 3,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.95,
+            "word_box_recall_iou50": 0.95,
+            "text_and_box_precision_iou50": 0.95,
+            "text_and_box_recall_iou50": 0.95,
+            "symbol_number_word_recall_iou50": 0.8888888888888888,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": [
+              "=="
+            ]
+          },
+          "timing": {
+            "first_ms": 426.087415,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              396.19194899999997,
+              419.439858,
+              415.595752,
+              409.601405,
+              447.954586
+            ],
+            "warm_median_ms": 415.595752,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3373.4319850000247,
+              3474.5807110002715,
+              3524.0806510000766,
+              3676.7212859999745,
+              3475.0008409996553,
+              3474.8228009998456
+            ]
+          }
+        },
+        "preprocessed_raw": {
+          "full_text": "Read every word without changing the source.\nInvoice number: 2026; total $19.90.\nCode: if i % 2 == 0: print(\"even\")",
+          "metrics": {
+            "cer": 0.0,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 3,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 1.0,
+            "word_box_recall_iou50": 1.0,
+            "text_and_box_precision_iou50": 1.0,
+            "text_and_box_recall_iou50": 1.0,
+            "symbol_number_word_recall_iou50": 1.0,
+            "expected_words": 20,
+            "predicted_words": 20,
+            "missing_or_wrong_words": []
+          },
+          "timing": {
+            "first_ms": 1433.5342999999998,
+            "preprocessing_ms": 740.757253,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1550.409939,
+              1523.093089,
+              1695.452607,
+              1477.369711,
+              1444.278042
+            ],
+            "warm_median_ms": 1523.093089,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3373.4319850000247,
+              3474.5807110002715,
+              3524.0806510000766,
+              3676.7212859999745,
+              3475.0008409996553,
+              3474.8228009998456
+            ]
+          }
+        },
+        "current_pipeline": {
+          "full_text": "Read every word without changing the source.\nInvoice number: 2026; total $19.90.\nCode: if i % 2 == 0: print(\"even\")",
+          "metrics": {
+            "cer": 0.0,
+            "cer_no_whitespace": 0.0,
+            "exact_lines": 3,
+            "expected_lines": 3,
+            "predicted_lines": 3,
+            "word_box_precision_iou50": 0.8260869565217391,
+            "word_box_recall_iou50": 0.95,
+            "text_and_box_precision_iou50": 0.7391304347826086,
+            "text_and_box_recall_iou50": 0.85,
+            "symbol_number_word_recall_iou50": 0.6666666666666666,
+            "expected_words": 20,
+            "predicted_words": 23,
+            "missing_or_wrong_words": [
+              "2026;",
+              "0:",
+              "print(\"even\")"
+            ]
+          },
+          "timing": {
+            "first_ms": 1471.9680150000002,
+            "preprocessing_ms": 0.0,
+            "native_environment": {
+              "OMP_THREAD_LIMIT": "1"
+            },
+            "native_timeout_seconds": 120,
+            "warm_ms": [
+              1491.454308,
+              1537.750432,
+              1503.4873559999999,
+              1525.045733,
+              1515.871038
+            ],
+            "warm_median_ms": 1515.871038,
+            "scope": "engine elapsed reported by fresh diagnostic subprocess; Tesseract process startup included",
+            "diagnostic_wall_ms": [
+              3373.4319850000247,
+              3474.5807110002715,
+              3524.0806510000766,
+              3676.7212859999745,
+              3475.0008409996553,
+              3474.8228009998456
+            ]
+          }
+        },
+        "rapidocr_original_raw": {
+          "full_text": "Read\nevery\nwo rd\nwithout\nchanging\nthe\nsource.\nInvoice\nnumber:\n2026;\ntotal\n$19.90.\nCode:\nif\ni\n%\n2\n==\n0 :\nprint(\"\neven\n(\")",
+          "metrics": {
+            "cer": 0.19130434782608696,
+            "cer_no_whitespace": 0.010416666666666666,
+            "exact_lines": 0,
+            "expected_lines": 3,
+            "predicted_lines": 22,
+            "word_box_precision_iou50": 0.5925925925925926,
+            "word_box_recall_iou50": 0.8,
+            "text_and_box_precision_iou50": 0.5555555555555556,
+            "text_and_box_recall_iou50": 0.75,
+            "symbol_number_word_recall_iou50": 0.6666666666666666,
+            "expected_words": 20,
+            "predicted_words": 27,
+            "missing_or_wrong_words": [
+              "word",
+              "source.",
+              "==",
+              "0:",
+              "print(\"even\")"
+            ]
+          },
+          "timing": {
+            "model_initialization_ms": 3756.4084440000443,
+            "first_ms": 2307.3441299998194,
+            "warm_ms": [
+              2374.961009999879,
+              2165.1308979999158,
+              2357.1694879997267,
+              2301.5239100000144,
+              2303.1870400000116
+            ],
+            "warm_median_ms": 2303.1870400000116,
+            "scope": "persistent model inference, initialization excluded"
+          }
+        }
+      }
+    }
+  ]
+}
