@@ -41,10 +41,13 @@ process startup is included, RapidOCR is persistent, and CPU thread limits diffe
   process-state assertion skipped. Windows timeout propagation still executes.
 - Native diagnostic harness: 20 passed on both operating systems.
 - Both native benchmark steps completed, and both reports were uploaded.
-- The full application Rust suite stopped at its first failing integration
+- Windows full application Rust tests stopped at the first failing integration
   binary: `test_empirical_inspect_asimov_crop_row_ink`, the same guideline-mask
-  assertion already reproduced from original sources. Consequently both jobs
-  correctly remain red. Benchmark success is not presented as a green full suite.
+  assertion already reproduced from original sources. Linux CI could not compile
+  the app's `libspa` dependency against Ubuntu 22's PipeWire headers; no full-app
+  test execution is claimed for that CI job. Both benchmarks and the standalone
+  harness passed. Consequently both jobs correctly remain red; benchmark success
+  is not presented as a green full suite.
 - A subsequent workflow uses `--no-fail-fast` to expose all existing suite
   failures; the local equivalent already completed with 235 passed / 6 failed /
   1 ignored, with all six failures independently reproduced from the baseline.
