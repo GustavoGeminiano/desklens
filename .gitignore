@@ -18,5 +18,12 @@ src-tauri/.cargo/
 ANTIGRAVITY_HANDOVER.md
 *.local.md
 
+# Isolated OCR benchmark dependencies and generated artifacts
+.venv-ocr/
+.ocr-models/
+benchmark-results*/
+__pycache__/
+*.pyc
+
 
 DESKLENS_PROJECT_HISTORY.md

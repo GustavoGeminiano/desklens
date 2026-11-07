@@ -2810,6 +2810,98 @@ fn recognize_rgba_with_engine(
     Ok(lines_out)
 }
 
+/// Diagnostic-only single-pass recognition, without application filters or repairs.
+/// Coordinates are mapped back by `inv_scale`; the TSV retains engine coordinates.
+pub fn extract_text_raw_for_diagnostic(
+    image: &image::RgbaImage,
+    inv_scale: f64,
+) -> Result<(OcrResult, Option<String>), String> {
+    if image.width() == 0 || image.height() == 0 || !inv_scale.is_finite() || inv_scale <= 0.0 {
+        return Err("Expected nonempty image and positive finite inverse scale".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?.as_nanos();
+        let path = std::env::temp_dir().join(format!("desklens_diag_{}_{}.png", std::process::id(), stamp));
+        image.save_with_format(&path, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        let run = |language: bool| {
+            let mut command = Command::new("tesseract");
+            command.arg(&path).args(["stdout", "--dpi", "300", "--psm", "11"]);
+            if language { command.args(["-l", "por+eng"]); }
+            command.arg("tsv").output()
+        };
+        let output = match run(true) {
+            Ok(out) if out.status.success() => Ok(out),
+            _ => run(false),
+        };
+        let _ = std::fs::remove_file(&path);
+        let output = output.map_err(|e| format!("Could not execute Tesseract: {e}"))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+        }
+        let tsv = String::from_utf8(output.stdout).map_err(|e| e.to_string())?;
+        return Ok((parse_tesseract_tsv_raw_for_diagnostic(&tsv, inv_scale), Some(tsv)));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use windows::{Globalization::Language, Media::Ocr::OcrEngine};
+        let language = Language::CreateLanguage(&windows::core::HSTRING::from("en-US"));
+        let engine = match language {
+            Ok(lang) if OcrEngine::IsLanguageSupported(&lang).unwrap_or(false) =>
+                OcrEngine::TryCreateFromLanguage(&lang).or_else(|_| OcrEngine::TryCreateFromUserProfileLanguages()),
+            _ => OcrEngine::TryCreateFromUserProfileLanguages(),
+        }.map_err(|e| e.to_string())?;
+        let lines = recognize_rgba_with_engine(&engine, image, 0.0, 0.0, 0.0, inv_scale)?;
+        return Ok((diagnostic_result_from_lines(lines), None));
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    Err("Diagnostic OCR supports Linux and Windows".into())
+}
+
+fn diagnostic_result_from_lines(lines: Vec<OcrLine>) -> OcrResult {
+    OcrResult {
+        full_text: lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"),
+        word_count: lines.iter().map(|l| l.words.len()).sum(),
+        lines,
+        boxes: Vec::new(),
+        paragraphs: Vec::new(),
+    }
+}
+
+/// Keeps engine spelling, order and confidence, including low-confidence symbols.
+pub fn parse_tesseract_tsv_raw_for_diagnostic(tsv: &str, inv_scale: f64) -> OcrResult {
+    let mut lines: Vec<OcrLine> = Vec::new();
+    let mut keys = Vec::new();
+    for row in tsv.lines().skip(1) {
+        let p: Vec<&str> = row.splitn(12, '\t').collect();
+        if p.len() != 12 || p[0] != "5" || p[11].trim().is_empty() { continue; }
+        let numbers: Option<Vec<f64>> = p[6..10].iter().map(|v| v.parse::<f64>().ok()).collect();
+        let Some(numbers) = numbers else { continue; };
+        let Ok(confidence) = p[10].parse::<f32>() else { continue; };
+        if !confidence.is_finite() || numbers.iter().any(|v| !v.is_finite()) || numbers[2] <= 0.0 || numbers[3] <= 0.0 { continue; }
+        let key = (p[1].to_string(), p[2].to_string(), p[3].to_string(), p[4].to_string());
+        let index = match keys.iter().position(|k| k == &key) {
+            Some(index) => index,
+            None => {
+                keys.push(key);
+                lines.push(OcrLine { text: String::new(), x: 0.0, y: 0.0, width: 0.0, height: 0.0, words: Vec::new() });
+                lines.len() - 1
+            }
+        };
+        lines[index].words.push(OcrWord {
+            text: p[11].to_string(), x: numbers[0] * inv_scale, y: numbers[1] * inv_scale,
+            width: numbers[2] * inv_scale, height: numbers[3] * inv_scale, confidence,
+        });
+    }
+    for line in &mut lines {
+        (line.x, line.y, line.width, line.height) = compute_words_bounding_box(&line.words);
+        line.text = line.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+    }
+    diagnostic_result_from_lines(lines)
+}
+
 #[cfg(target_os = "windows")]
 pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String> {
     use windows::Globalization::Language;
