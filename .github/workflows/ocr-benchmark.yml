@@ -47,6 +47,8 @@ jobs:
       - name: Test benchmark evaluation
         run: python -m unittest discover -s scripts/ocr_benchmark -p "test_*.py"
       - name: Test frontend
+        id: frontend-tests
+        continue-on-error: true
         run: npm test
       - name: Build native diagnostic
         run: cargo build --locked --manifest-path tools/ocr-diagnostic/Cargo.toml
@@ -69,6 +71,6 @@ jobs:
           name: ocr-benchmark-${{ runner.os }}
           path: benchmark-results/
           if-no-files-found: warn
-      - name: Preserve Rust test failure status
-        if: steps.rust-tests.outcome == 'failure'
-        run: python -c "raise SystemExit('Existing Rust suite failed; see Test Rust logs and benchmark artifacts')"
+      - name: Preserve existing test failure status
+        if: steps.rust-tests.outcome == 'failure' || steps.frontend-tests.outcome == 'failure'
+        run: python -c "raise SystemExit('Existing suite failed; see test logs and benchmark artifacts')"
