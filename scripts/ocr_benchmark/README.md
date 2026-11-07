@@ -51,6 +51,10 @@ The runner separates first-call timing, RapidOCR initialization, and five repeat
 measurements. Native timings include executable/engine startup; these are repeated
 invocations, not a persistent warm native OCR service. The current pipeline's
 preprocessing is included in total time. Model download time is excluded.
+Native processes run with `OMP_THREAD_LIMIT=1` to bound Tesseract OpenMP
+parallelism; RapidOCR uses four CPU threads. Both settings are recorded. Each
+native diagnostic has a 120-second timeout (`--native-timeout`); timeouts terminate
+its child processes and fail the run rather than generating an empty success.
 
 ## Interpreting quality
 

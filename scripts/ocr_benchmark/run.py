@@ -5,6 +5,8 @@ import json
 import importlib.metadata
 import importlib.util
 import platform
+import os
+import signal
 import sys
 import statistics
 import subprocess
@@ -22,16 +24,49 @@ def timed(call):
     return result, (time.perf_counter()-start)*1000
 
 
+def run_native(command, timeout=120):
+    """Bound native OCR and terminate its entire child process tree on timeout."""
+    environment = dict(os.environ, OMP_THREAD_LIMIT='1')
+    options = {'env': environment}
+    if os.name == 'nt':
+        options['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        options['start_new_session'] = True
+    process = subprocess.Popen(command, **options)
+    try:
+        code = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == 'nt':
+            try:
+                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                               capture_output=True, timeout=10, check=True)
+            except (OSError, subprocess.SubprocessError):
+                process.kill()
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.wait()
+        raise subprocess.TimeoutExpired(command, timeout) from None
+    if code:
+        raise subprocess.CalledProcessError(code, command)
+    return code
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--diagnostic', required=True, type=Path, help='Built Rust ocr_diagnostic executable')
     parser.add_argument('--output',type=Path,default=Path('benchmark-results'))
     parser.add_argument('--manifest',type=Path,default=Path(__file__).with_name('manifest.json'))
     parser.add_argument('--repeats',type=int,default=5)
+    parser.add_argument('--native-timeout',type=float,default=120,help='Maximum seconds per diagnostic invocation, including its OCR children')
     parser.add_argument('--font',type=Path,help='Local monospace TTF for reproducible synthetic cases; font SHA recorded')
     parser.add_argument('--model-dir',type=Path)
     parser.add_argument('--skip-rapidocr',action='store_true',help='Explicit partial run; report must not claim comparative engine winner')
     args = parser.parse_args()
+    if args.native_timeout <= 0:
+        parser.error('--native-timeout must be positive')
     if args.repeats < 1:
         parser.error('--repeats must be positive')
     diagnostic = args.diagnostic.resolve()
@@ -51,13 +86,13 @@ def main():
         wall_samples = []
         for repeat in range(args.repeats+1):
             native_path = args.output / f'{case["id"]}.native.{repeat}.json'
-            _, wall = timed(lambda: subprocess.run([str(diagnostic),'--input',case['image_path'],'--output',str(native_path)],check=True))
+            _, wall = timed(lambda: run_native([str(diagnostic),'--input',case['image_path'],'--output',str(native_path)],timeout=args.native_timeout))
             native = json.loads(native_path.read_text(encoding='utf-8'))
             wall_samples.append(wall)
             for variant in native['variants']:
                 name = variant['name']
                 if name not in case['runs']:
-                    case['runs'][name] = {'engine':variant['engine'],'result':variant['result'],'metadata':{'confidence_scale':variant.get('confidence_scale'),'confidence_origin':variant.get('confidence_origin'),'coordinates':native.get('coordinates'),'platform':native.get('platform'),'timing_notes':native.get('timing_notes')},'timing':{'first_ms':variant['elapsed_ms'],'preprocessing_ms':variant.get('preprocessing_ms')}}
+                    case['runs'][name] = {'engine':variant['engine'],'result':variant['result'],'metadata':{'confidence_scale':variant.get('confidence_scale'),'confidence_origin':variant.get('confidence_origin'),'coordinates':native.get('coordinates'),'platform':native.get('platform'),'timing_notes':native.get('timing_notes'),'OMP_THREAD_LIMIT':'1','native_timeout_seconds':args.native_timeout},'timing':{'first_ms':variant['elapsed_ms'],'preprocessing_ms':variant.get('preprocessing_ms'),'native_environment':{'OMP_THREAD_LIMIT':'1'},'native_timeout_seconds':args.native_timeout}}
                     native_samples[name] = []
                 else:
                     native_samples[name].append(variant['elapsed_ms'])
@@ -84,7 +119,7 @@ def main():
             return (output.stdout+output.stderr).strip()
         except (OSError, subprocess.CalledProcessError) as exc:
             return {'unavailable':str(exc)}
-    environment = {'platform':platform.platform(),'python':sys.version,'packages':{name:importlib.metadata.version(name) for name in ('Pillow','rapidocr','onnxruntime') if importlib.util.find_spec({'Pillow':'PIL'}.get(name,name)) is not None},'tesseract_version':command_info(['tesseract','--version']),'tesseract_languages':command_info(['tesseract','--list-langs'])}
+    environment = {'native_environment':{'OMP_THREAD_LIMIT':'1'},'native_timeout_seconds':args.native_timeout,'platform':platform.platform(),'python':sys.version,'packages':{name:importlib.metadata.version(name) for name in ('Pillow','rapidocr','onnxruntime') if importlib.util.find_spec({'Pillow':'PIL'}.get(name,name)) is not None},'tesseract_version':command_info(['tesseract','--version']),'tesseract_languages':command_info(['tesseract','--list-langs'])}
     data = {'schema_version':1, 'environment':environment,'summary':summary,'partial_run':args.skip_rapidocr,'repeats':args.repeats,'selection_policy':'Insufficient evidence for production promotion: small, repeated-content and overlay-contaminated dataset. Acquire clean held-out captures before any global engine decision.','cases':cases}
     (args.output/'results.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     write_report(args.output/'report.html',cases,partial=args.skip_rapidocr,summary=summary)
