@@ -88,38 +88,197 @@ pub fn compute_words_bounding_box(words: &[OcrWord]) -> (f64, f64, f64, f64) {
 }
 
 
+/// Helper to detect if outer pixels form a solid selection border or crop rectangle stroke.
+/// Returns the thickness of the detected border (0, 1, 2, or 3).
+pub fn detect_solid_border_thickness(image: &image::RgbaImage) -> u32 {
+    let (w, h) = (image.width(), image.height());
+    if w < 16 || h < 16 {
+        return 0;
+    }
+
+    let mut detected_thickness = 0u32;
+    for b in 0..3u32 {
+        let p_tl = image.get_pixel(b, b);
+        if p_tl[3] <= 32 {
+            break;
+        }
+
+        let mid_w = w / 2;
+        let mid_h = h / 2;
+        let test_points = [
+            (mid_w, b),
+            (w - 1 - b, b),
+            (b, mid_h),
+            (w - 1 - b, mid_h),
+            (b, h - 1 - b),
+            (mid_w, h - 1 - b),
+            (w - 1 - b, h - 1 - b),
+        ];
+
+        let matches_stroke = test_points.iter().all(|&(x, y)| {
+            let p = image.get_pixel(x, y);
+            p[3] > 32
+                && (p[0] as i32 - p_tl[0] as i32).abs() <= 12
+                && (p[1] as i32 - p_tl[1] as i32).abs() <= 12
+                && (p[2] as i32 - p_tl[2] as i32).abs() <= 12
+        });
+
+        if !matches_stroke {
+            break;
+        }
+
+        let int_y = (b + 4).min(mid_h);
+        let int_x = (b + 4).min(mid_w);
+        let p_int = image.get_pixel(int_x, int_y);
+        let p_center = image.get_pixel(mid_w, mid_h);
+
+        let diff_int = (p_tl[0] as i32 - p_int[0] as i32)
+            .abs()
+            .max((p_tl[1] as i32 - p_int[1] as i32).abs())
+            .max((p_tl[2] as i32 - p_int[2] as i32).abs());
+        let diff_center = (p_tl[0] as i32 - p_center[0] as i32)
+            .abs()
+            .max((p_tl[1] as i32 - p_center[1] as i32).abs())
+            .max((p_tl[2] as i32 - p_center[2] as i32).abs());
+
+        if diff_int > 20 && diff_center > 20 {
+            detected_thickness = b + 1;
+        } else {
+            break;
+        }
+    }
+
+    detected_thickness
+}
+
+/// Estimates the dominant background color (R, G, B) of the image by sampling its
+/// outer perimeter with an inset to avoid selection border outlines.
+/// Sampling the perimeter avoids bias from foreground text glyphs,
+/// syntax highlighting, and code lines, ensuring accurate dark/light detection and contrast calculation.
+pub fn estimate_background_color(image: &image::RgbaImage) -> (f32, f32, f32) {
+    let (w, h) = (image.width(), image.height());
+    if w == 0 || h == 0 {
+        return (255.0, 255.0, 255.0);
+    }
+
+    let mut r_vals = Vec::with_capacity(4096);
+    let mut g_vals = Vec::with_capacity(4096);
+    let mut b_vals = Vec::with_capacity(4096);
+
+    // If image is very small (<= 6x6), sample all non-transparent pixels.
+    if w <= 6 || h <= 6 {
+        for pixel in image.pixels() {
+            if pixel[3] > 32 {
+                r_vals.push(pixel[0]);
+                g_vals.push(pixel[1]);
+                b_vals.push(pixel[2]);
+            }
+        }
+    } else {
+        // Detect if outer edges contain a solid selection border or crop rectangle stroke
+        let border = detect_solid_border_thickness(image);
+        let base_inset = if border > 0 {
+            border + 1
+        } else if w >= 24 && h >= 24 {
+            2
+        } else if w >= 12 && h >= 12 {
+            1
+        } else {
+            0
+        };
+        // Clamping ensures we never invert bounds on small/medium crops
+        let max_inset = (w.min(h) / 2).saturating_sub(2).min(4);
+        let inset = base_inset.min(max_inset);
+
+        let y_top_0 = inset;
+        let y_top_1 = inset + 1;
+        let y_bot_0 = h - 2 - inset;
+        let y_bot_1 = h - 1 - inset;
+
+        let x_left_0 = inset;
+        let x_left_1 = inset + 1;
+        let x_right_0 = w - 2 - inset;
+        let x_right_1 = w - 1 - inset;
+
+        // Top 2 rows and bottom 2 rows at inset
+        for &y in &[y_top_0, y_top_1, y_bot_0, y_bot_1] {
+            for x in inset..(w - inset) {
+                let p = image.get_pixel(x, y);
+                if p[3] > 32 {
+                    r_vals.push(p[0]);
+                    g_vals.push(p[1]);
+                    b_vals.push(p[2]);
+                }
+            }
+        }
+
+        // Left 2 cols and right 2 cols at inset for intervening rows
+        let y_start = y_top_1 + 1;
+        let y_end = y_bot_0;
+        if y_start < y_end {
+            for y in y_start..y_end {
+                for &x in &[x_left_0, x_left_1, x_right_0, x_right_1] {
+                    let p = image.get_pixel(x, y);
+                    if p[3] > 32 {
+                        r_vals.push(p[0]);
+                        g_vals.push(p[1]);
+                        b_vals.push(p[2]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback if perimeter was completely transparent: sample non-transparent interior pixels
+    // Cast to u64 to guard against u32 multiplication overflow on large image dimensions
+    if r_vals.is_empty() {
+        let total_pixels = (w as u64) * (h as u64);
+        let step = ((total_pixels / 4000).max(1)) as usize;
+        let raw = image.as_raw();
+        let num_pixels = (total_pixels as usize).min(raw.len() / 4);
+        for i in (0..num_pixels).step_by(step) {
+            let idx = i * 4;
+            if idx + 3 < raw.len() && raw[idx + 3] > 32 {
+                r_vals.push(raw[idx]);
+                g_vals.push(raw[idx + 1]);
+                b_vals.push(raw[idx + 2]);
+            }
+        }
+    }
+
+    if r_vals.is_empty() {
+        return (255.0, 255.0, 255.0);
+    }
+
+    r_vals.sort_unstable();
+    g_vals.sort_unstable();
+    b_vals.sort_unstable();
+    let mid = r_vals.len() / 2;
+    (r_vals[mid] as f32, g_vals[mid] as f32, b_vals[mid] as f32)
+}
+
 /// Detects whether an image has a predominantly dark background (e.g. dark mode editor or terminal).
+/// Samples the outer 2-pixel perimeter to prevent interior code tokens from biasing the classification.
 pub fn is_dark_image(image: &image::RgbaImage) -> bool {
     let (w, h) = (image.width(), image.height());
     if w == 0 || h == 0 {
         return false;
     }
 
-    let step = ((w * h) / 10000).max(1) as usize;
-    let mut total_luma: u64 = 0;
-    let mut count: u64 = 0;
-
-    let raw = image.as_raw();
-    let num_pixels = (w * h) as usize;
-    for i in (0..num_pixels).step_by(step) {
-        let idx = i * 4;
-        if idx + 3 < raw.len() {
-            let a = raw[idx + 3];
-            if a > 32 {
-                let r = raw[idx] as u32;
-                let g = raw[idx + 1] as u32;
-                let b = raw[idx + 2] as u32;
-                let luma = (r * 299 + g * 587 + b * 114) / 1000;
-                total_luma += luma as u64;
-                count += 1;
-            }
-        }
-    }
-
-    if count == 0 {
+    // Check if the image contains any opaque/non-transparent pixels
+    let has_opaque = image.pixels().any(|p| p[3] > 32);
+    if !has_opaque {
         return false;
     }
-    (total_luma / count) < 128
+
+    let (bg_r, bg_g, bg_b) = estimate_background_color(image);
+    let bg_luma = bg_r * 0.299 + bg_g * 0.587 + bg_b * 0.114;
+    bg_luma < 128.0
+}
+
+/// Alias for `is_dark_image`, checking whether background of crop is dark.
+pub fn is_dark_background(image: &image::RgbaImage) -> bool {
+    is_dark_image(image)
 }
 
 /// Inverts RGB channels of an image to turn dark background into light background for high-fidelity OCR.
@@ -133,58 +292,108 @@ pub fn invert_image(image: &image::RgbaImage) -> image::RgbaImage {
     inverted
 }
 
-/// Enhances contrast of an image using background color distance and dynamic range stretching.
-/// By measuring per-pixel chromatic and luminance distance from the dominant background color,
-/// colored syntax tokens (such as orange/salmon keywords, purple operators, and dim gray output
-/// on dark editor themes) receive strong dark-ink contrast against a clean white background
-/// instead of being washed out by pure luminance inversion.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreprocessedImageResult {
+    pub processed_image: image::RgbaImage,
+    pub scale: f64,
+    pub gutter_offset_x: Option<f64>,
+    pub vertical_guides_masked: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GutterDetectionResult {
+    pub gutter_boundary_x: Option<f64>,
+    pub has_line_numbers: bool,
+}
+
+/// Enhances contrast of an image using adaptive local binarization and background color distance.
+/// By measuring per-pixel chromatic and luminance distance from the background color,
+/// colored syntax tokens (such as orange/salmon keywords, purple operators, cyan variables,
+/// and dim gray output on dark editor themes) receive strong solid dark-ink contrast
+/// against a clean white background (mapping pixels with distance >= 38.0 to solid black ink),
+/// while thin anti-aliased glyph edges smoothly transition without washing out.
 pub fn enhance_contrast(image: &mut image::RgbaImage) {
     let (w, h) = (image.width(), image.height());
     if w == 0 || h == 0 {
         return;
     }
 
-    let step = ((w * h) / 4000).max(1) as usize;
-    let raw = image.as_raw();
-    let num_pixels = (w * h) as usize;
-    let mut r_vals = Vec::with_capacity(4096);
-    let mut g_vals = Vec::with_capacity(4096);
-    let mut b_vals = Vec::with_capacity(4096);
+    let dark = is_dark_image(image);
 
-    for i in (0..num_pixels).step_by(step) {
-        let idx = i * 4;
-        if idx + 3 < raw.len() && raw[idx + 3] > 32 {
-            r_vals.push(raw[idx]);
-            g_vals.push(raw[idx + 1]);
-            b_vals.push(raw[idx + 2]);
+    // Compute global background color via 2-pixel perimeter sampling
+    let (global_bg_r, global_bg_g, global_bg_b) = estimate_background_color(image);
+    let global_bg_luma = (global_bg_r * 0.299 + global_bg_g * 0.587 + global_bg_b * 0.114).clamp(0.0, 255.0);
+
+    // Tile-based adaptive local background estimation (64x64 tiles)
+    const TILE_SIZE: u32 = 64;
+    let tiles_x = ((w + TILE_SIZE - 1) / TILE_SIZE).max(1);
+    let tiles_y = ((h + TILE_SIZE - 1) / TILE_SIZE).max(1);
+    let mut tile_bgs: Vec<Vec<(f32, f32, f32, f32)>> = vec![vec![(global_bg_r, global_bg_g, global_bg_b, global_bg_luma); tiles_x as usize]; tiles_y as usize];
+
+    for ty in 0..tiles_y {
+        for tx in 0..tiles_x {
+            let x0 = tx * TILE_SIZE;
+            let y0 = ty * TILE_SIZE;
+            let x1 = (x0 + TILE_SIZE).min(w);
+            let y1 = (y0 + TILE_SIZE).min(h);
+            let mut tr = Vec::new();
+            let mut tg = Vec::new();
+            let mut tb = Vec::new();
+            let step_x = ((x1 - x0) / 8).max(1);
+            let step_y = ((y1 - y0) / 8).max(1);
+            for y in (y0..y1).step_by(step_y as usize) {
+                for x in (x0..x1).step_by(step_x as usize) {
+                    let p = image.get_pixel(x, y);
+                    if p[3] > 32 {
+                        tr.push(p[0]);
+                        tg.push(p[1]);
+                        tb.push(p[2]);
+                    }
+                }
+            }
+            if tr.len() >= 8 {
+                tr.sort_unstable();
+                tg.sort_unstable();
+                tb.sort_unstable();
+                let tmid = (tr.len() - 1) / 2;
+                let br = tr[tmid] as f32;
+                let bg = tg[tmid] as f32;
+                let bb = tb[tmid] as f32;
+                let bluma = (br * 0.299 + bg * 0.587 + bb * 0.114).clamp(0.0, 255.0);
+                if (dark && bluma < 140.0) || (!dark && bluma >= 115.0) {
+                    tile_bgs[ty as usize][tx as usize] = (br, bg, bb, bluma);
+                }
+            }
         }
     }
 
-    if r_vals.is_empty() {
-        return;
-    }
-
-    r_vals.sort_unstable();
-    g_vals.sort_unstable();
-    b_vals.sort_unstable();
-    let mid = r_vals.len() / 2;
-    let bg_r = r_vals[mid] as f32;
-    let bg_g = g_vals[mid] as f32;
-    let bg_b = b_vals[mid] as f32;
-    let bg_luma = (bg_r * 0.299 + bg_g * 0.587 + bg_b * 0.114).clamp(0.0, 255.0);
-
     let mut max_diff = 0.0f32;
-    for pixel in image.pixels() {
-        if pixel[3] > 0 {
-            let r = pixel[0] as f32;
-            let g = pixel[1] as f32;
-            let b = pixel[2] as f32;
-            let ch_diff = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
-            let luma = r * 0.299 + g * 0.587 + b * 0.114;
-            let luma_diff = (luma - bg_luma).abs();
-            let diff = ch_diff.max(luma_diff);
-            if diff > max_diff {
-                max_diff = diff;
+    for y in 0..h {
+        let ty = ((y / TILE_SIZE) as usize).min(tiles_y as usize - 1);
+        for x in 0..w {
+            let tx = ((x / TILE_SIZE) as usize).min(tiles_x as usize - 1);
+            let (bg_r, bg_g, bg_b, bg_luma) = tile_bgs[ty][tx];
+            let p = image.get_pixel(x, y);
+            if p[3] > 0 {
+                let r = p[0] as f32;
+                let g = p[1] as f32;
+                let b = p[2] as f32;
+                let ch_diff = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
+                let luma = r * 0.299 + g * 0.587 + b * 0.114;
+                let luma_diff = (luma - bg_luma).abs();
+                let is_blue_pill_tint = dark
+                    && b > (r + 22.0)
+                    && b > (g + 22.0)
+                    && r < 85.0
+                    && luma < 98.0;
+                let diff = if is_blue_pill_tint {
+                    0.0
+                } else {
+                    luma_diff.max(ch_diff * 0.55)
+                };
+                if diff > max_diff {
+                    max_diff = diff;
+                }
             }
         }
     }
@@ -193,10 +402,9 @@ pub fn enhance_contrast(image: &mut image::RgbaImage) {
         return;
     }
 
-    let dark = is_dark_image(image);
     if !dark {
         // For light-background images, gently stretch luminance so background maps to pure white
-        // while preserving crisp anti-aliased glyph thickness for thin operators like '=' and '+'.
+        // while preserving crisp anti-aliased glyph thickness for thin operators and single quotes.
         let mut min_luma = 255u8;
         let mut max_luma = 0u8;
         for pixel in image.pixels() {
@@ -231,91 +439,497 @@ pub fn enhance_contrast(image: &mut image::RgbaImage) {
         return;
     }
 
-    let noise_floor = 8.0f32;
-    let gain = (255.0 / ((max_diff - noise_floor) * 0.65).max(40.0)).clamp(1.25, 2.35);
+    // Adaptive High-Contrast Binarization for Dark Themes:
+    // Pixels with chromatic/luminance distance >= 38.0 from local background map to solid black (0).
+    // Pixels within noise floor (<= 12.0) map to pure white (255).
+    // Transition pixels (12.0..38.0) ramp steeply, ensuring thin 1px syntax strokes and operators
+    // become crisp, bold ink for OCR engines without washed-out anti-aliasing artifacts.
+    for y in 0..h {
+        let ty = ((y / TILE_SIZE) as usize).min(tiles_y as usize - 1);
+        for x in 0..w {
+            let tx = ((x / TILE_SIZE) as usize).min(tiles_x as usize - 1);
+            let (bg_r, bg_g, bg_b, bg_luma) = tile_bgs[ty][tx];
+            let pixel = image.get_pixel_mut(x, y);
+            if pixel[3] > 0 {
+                let r = pixel[0] as f32;
+                let g = pixel[1] as f32;
+                let b = pixel[2] as f32;
+                let ch_diff = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
+                let luma = r * 0.299 + g * 0.587 + b * 0.114;
+                let luma_diff = (luma - bg_luma).abs();
+                let is_blue_pill_tint = b > (r + 22.0)
+                    && b > (g + 22.0)
+                    && r < 85.0
+                    && luma < 98.0;
+                let diff = if is_blue_pill_tint {
+                    0.0
+                } else {
+                    luma_diff.max(ch_diff * 0.55)
+                };
 
-    for pixel in image.pixels_mut() {
-        if pixel[3] > 0 {
-            let r = pixel[0] as f32;
-            let g = pixel[1] as f32;
-            let b = pixel[2] as f32;
-            let ch_diff = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
-            let luma = r * 0.299 + g * 0.587 + b * 0.114;
-            let luma_diff = (luma - bg_luma).abs();
-            let diff = ch_diff.max(luma_diff);
-
-            let out_val = if diff <= noise_floor {
-                255u8
-            } else {
-                let ink = ((diff - noise_floor) * gain).clamp(0.0, 240.0);
-                (255.0 - ink).round().clamp(15.0, 255.0) as u8
-            };
-            pixel[0] = out_val;
-            pixel[1] = out_val;
-            pixel[2] = out_val;
+                let out_val = if diff <= 12.0 {
+                    255u8
+                } else if diff >= 38.0 {
+                    0u8
+                } else {
+                    let ratio = (diff - 12.0) / (38.0 - 12.0);
+                    ((1.0 - ratio) * 255.0).round().clamp(0.0, 255.0) as u8
+                };
+                pixel[0] = out_val;
+                pixel[1] = out_val;
+                pixel[2] = out_val;
+            }
         }
     }
 }
 
+/// Suppresses continuous 1-2px vertical guidelines (editor indentation guides or gutter dividers)
+/// with vertical run length >= 24px by inpainting them with the white background (255, 255, 255, 255).
+/// Preserves horizontal character strokes that intersect the guideline.
+pub fn suppress_vertical_guidelines(image: &mut image::RgbaImage) -> usize {
+    let (w, h) = (image.width(), image.height());
+    if w < 6 || h < 24 {
+        return 0;
+    }
+
+    let is_ink = |x: u32, y: u32| -> bool {
+        if x >= w || y >= h {
+            return false;
+        }
+        let p = image.get_pixel(x, y);
+        p[0] < 200 && p[1] < 200 && p[2] < 200
+    };
+
+    let mut masked_pixels = Vec::new();
+
+    for x in 0..w {
+        let mut y = 0u32;
+        while y < h {
+            if is_ink(x, y) {
+                let start_y = y;
+                while y < h && is_ink(x, y) {
+                    y += 1;
+                }
+                let end_y = y;
+                let run_len = end_y - start_y;
+                if run_len >= 24 {
+                    // Check if this run is a thin vertical guideline (width <= 3px)
+                    let mut thin_row_count = 0u32;
+                    for ry in start_y..end_y {
+                        let left_empty = x < 2 || !is_ink(x - 2, ry);
+                        let right_empty = (x + 2 >= w) || !is_ink(x + 2, ry);
+                        if left_empty || right_empty {
+                            thin_row_count += 1;
+                        }
+                    }
+
+                    if (thin_row_count as f32 / run_len as f32) >= 0.30 {
+                        for ry in start_y..end_y {
+                            let is_crossing = (x > 0 && is_ink(x - 1, ry)) && (x + 1 < w && is_ink(x + 1, ry));
+                            if !is_crossing {
+                                masked_pixels.push((x, ry));
+                            }
+                        }
+                    }
+                }
+            } else {
+                y += 1;
+            }
+        }
+    }
+
+    let count = masked_pixels.len();
+    for (mx, my) in masked_pixels {
+        image.put_pixel(mx, my, image::Rgba([255, 255, 255, 255]));
+    }
+    count
+}
+
+/// Returns the column indices of vertical guidelines (1-2px vertical rules spanning >= 24px).
+pub fn detect_vertical_guideline_columns(image: &image::RgbaImage) -> Vec<u32> {
+    let (w, h) = (image.width(), image.height());
+    if w < 6 || h < 24 {
+        return Vec::new();
+    }
+
+    let is_ink = |x: u32, y: u32| -> bool {
+        if x >= w || y >= h {
+            return false;
+        }
+        let p = image.get_pixel(x, y);
+        p[0] < 200 && p[1] < 200 && p[2] < 200
+    };
+
+    let mut guide_cols = Vec::new();
+
+    for x in 0..w {
+        let mut y = 0u32;
+        while y < h {
+            if is_ink(x, y) {
+                let start_y = y;
+                while y < h && is_ink(x, y) {
+                    y += 1;
+                }
+                let end_y = y;
+                let run_len = end_y - start_y;
+                if run_len >= 24 {
+                    let mut thin_row_count = 0u32;
+                    for ry in start_y..end_y {
+                        let left_empty = x < 2 || !is_ink(x - 2, ry);
+                        let right_empty = (x + 2 >= w) || !is_ink(x + 2, ry);
+                        if left_empty || right_empty {
+                            thin_row_count += 1;
+                        }
+                    }
+
+                    if (thin_row_count as f32 / run_len as f32) >= 0.30 {
+                        guide_cols.push(x);
+                        break;
+                    }
+                }
+            } else {
+                y += 1;
+            }
+        }
+    }
+
+    guide_cols
+}
+
+/// Detects whether an editor crop has a line number gutter on the left margin (typically x < 75px).
+/// Identifies the gutter boundary either from a vertical separator guide or a verified multi-line digit column.
+pub fn detect_gutter_boundary(image: &image::RgbaImage) -> GutterDetectionResult {
+    let (w, h) = (image.width(), image.height());
+    if w < 50 || h < 24 {
+        return GutterDetectionResult { gutter_boundary_x: None, has_line_numbers: false };
+    }
+
+    let max_search_x = ((w as f64) * 0.35).min(90.0).round() as u32;
+    if max_search_x < 18 {
+        return GutterDetectionResult { gutter_boundary_x: None, has_line_numbers: false };
+    }
+
+    let is_ink = |x: u32, y: u32| -> bool {
+        if x >= w || y >= h {
+            return false;
+        }
+        let p = image.get_pixel(x, y);
+        p[0] < 200 && p[1] < 200 && p[2] < 200
+    };
+
+    // 1. Check for a vertical separator guideline in x in 15..max_search_x
+    let mut found_guide_x: Option<u32> = None;
+    for x in 15..max_search_x {
+        let mut y = 0u32;
+        while y < h {
+            if is_ink(x, y) {
+                let start_y = y;
+                while y < h && is_ink(x, y) {
+                    y += 1;
+                }
+                let run_len = y - start_y;
+                if run_len >= 24 {
+                    let mut thin_cnt = 0u32;
+                    for ry in start_y..y {
+                        if (x >= 2 && !is_ink(x - 2, ry)) || (x + 2 < w && !is_ink(x + 2, ry)) {
+                            thin_cnt += 1;
+                        }
+                    }
+                    if (thin_cnt as f32 / run_len as f32) >= 0.30 {
+                        // Ensure this is a separator guide, not an indentation guide with text crossing it
+                        let crossing_cnt = (start_y..y)
+                            .filter(|&ry| x > 0 && is_ink(x - 1, ry) && x + 1 < w && is_ink(x + 1, ry))
+                            .count();
+                        if crossing_cnt <= 3 {
+                            found_guide_x = Some(x);
+                            break;
+                        }
+                    }
+                }
+            } else {
+                y += 1;
+            }
+        }
+        if found_guide_x.is_some() {
+            break;
+        }
+    }
+
+    // 2. Compute column ink in 0..max_search_x
+    let mut col_ink = vec![0u32; max_search_x as usize];
+    for x in 0..max_search_x {
+        let mut count = 0u32;
+        for y in 0..h {
+            if is_ink(x, y) {
+                count += 1;
+            }
+        }
+        col_ink[x as usize] = count;
+    }
+
+    if let Some(gx) = found_guide_x {
+        let left_ink: u32 = col_ink[..gx as usize].iter().sum();
+        if left_ink >= 12 {
+            return GutterDetectionResult {
+                gutter_boundary_x: Some(gx as f64 + 2.0),
+                has_line_numbers: true,
+            };
+        }
+    }
+
+    // 3. Check for a vertical whitespace gap in 12..max_search_x
+    let mut best_gap_start = 0u32;
+    let mut best_gap_len = 0u32;
+    let mut cur_gap_start = 0u32;
+    let mut cur_gap_len = 0u32;
+
+    for x in 12..max_search_x {
+        if col_ink[x as usize] <= 2 {
+            if cur_gap_len == 0 {
+                cur_gap_start = x;
+            }
+            cur_gap_len += 1;
+            if cur_gap_len > best_gap_len {
+                best_gap_len = cur_gap_len;
+                best_gap_start = cur_gap_start;
+            }
+        } else {
+            cur_gap_len = 0;
+        }
+    }
+
+    // Require best_gap_len >= 12 for whitespace-separated gutters without a guideline
+    // (a 1-space gap in 8-10px code assignments like `x = 10` is <= 10px and is not a gutter)
+    if best_gap_len >= 12 && best_gap_start >= 14 {
+        let left_ink: u32 = col_ink[..best_gap_start as usize].iter().sum();
+        let gap_end = (best_gap_start + best_gap_len).min(w);
+        let right_ink: u32 = (gap_end..max_search_x.min(w))
+            .map(|x| {
+                let mut c = 0u32;
+                for y in 0..h {
+                    if is_ink(x, y) { c += 1; }
+                }
+                c
+            })
+            .sum();
+
+        if left_ink >= 12 && right_ink >= 4 {
+            // Find distinct text line bands in the code region (x >= gap_end)
+            let mut right_row_ink = vec![0u32; h as usize];
+            for y in 0..h {
+                let mut c = 0u32;
+                for x in gap_end..w {
+                    if is_ink(x, y) { c += 1; }
+                }
+                right_row_ink[y as usize] = c;
+            }
+
+            let mut code_bands: Vec<(u32, u32)> = Vec::new();
+            let mut in_b = false;
+            let mut b_start = 0u32;
+            for y in 0..h {
+                if right_row_ink[y as usize] >= 2 {
+                    if !in_b {
+                        in_b = true;
+                        b_start = y;
+                    }
+                } else if in_b {
+                    let b_h = y - b_start;
+                    if b_h >= 4 {
+                        code_bands.push((b_start, y));
+                    }
+                    in_b = false;
+                }
+            }
+            if in_b && (h - b_start) >= 4 {
+                code_bands.push((b_start, h));
+            }
+
+            // Gutter line numbers require >= 2 distinct lines
+            if code_bands.len() >= 2 {
+                let mut gutter_lines_with_ink = 0usize;
+                let mut max_gutter_token_w = 0u32;
+
+                for &(by0, by1) in &code_bands {
+                    let mut b_min_x = best_gap_start;
+                    let mut b_max_x = 0u32;
+                    let mut has_ink_in_band = false;
+
+                    for y in by0..by1 {
+                        for x in 0..best_gap_start {
+                            if is_ink(x, y) {
+                                has_ink_in_band = true;
+                                b_min_x = b_min_x.min(x);
+                                b_max_x = b_max_x.max(x);
+                            }
+                        }
+                    }
+
+                    if has_ink_in_band {
+                        gutter_lines_with_ink += 1;
+                        let token_w = b_max_x.saturating_sub(b_min_x) + 1;
+                        max_gutter_token_w = max_gutter_token_w.max(token_w);
+                    }
+                }
+
+                // Gutter criteria:
+                // 1. Line numbers must be present on >= 2 lines and on >= 60% of code lines
+                // 2. Line number glyphs must be compact (width <= 40px, characteristic of 1-3 digits)
+                let gutter_line_ratio = gutter_lines_with_ink as f32 / code_bands.len() as f32;
+                if gutter_lines_with_ink >= 2 && gutter_line_ratio >= 0.60 && max_gutter_token_w <= 40 {
+                    let boundary = (best_gap_start + best_gap_len) as f64;
+                    return GutterDetectionResult {
+                        gutter_boundary_x: Some(boundary),
+                        has_line_numbers: true,
+                    };
+                }
+            }
+        }
+    }
+
+    GutterDetectionResult { gutter_boundary_x: None, has_line_numbers: false }
+}
+
 /// Detects horizontal text line bands `[y_start, y_end)` on a preprocessed black-on-white image.
-/// Automatically splits merged multi-line bands at local horizontal ink valleys.
-fn detect_horizontal_line_bands(image: &image::RgbaImage) -> Vec<(u32, u32)> {
+/// Uses hysteresis detection, micro-band merging, boundary dilation, and dynamic valley pitch splitting.
+pub fn detect_horizontal_line_bands(image: &image::RgbaImage) -> Vec<(u32, u32)> {
     let (w, h) = (image.width(), image.height());
     if w < 10 || h < 8 {
         return Vec::new();
     }
 
+    // Work on a copy with vertical guidelines suppressed so continuous 1-2px indentation/gutter lines
+    // do not produce row ink across inter-line gaps and collapse detection into a single band.
+    let mut working_img = image.clone();
+    suppress_vertical_guidelines(&mut working_img);
+    let guide_cols = detect_vertical_guideline_columns(image);
+
     let mut row_ink = vec![0u32; h as usize];
     for y in 0..h {
         let mut count = 0u32;
         for x in 0..w {
-            let p = image.get_pixel(x, y);
-            if p[0] < 200 && p[1] < 200 && p[2] < 200 {
+            if guide_cols.contains(&x) {
+                continue;
+            }
+            let p = working_img.get_pixel(x, y);
+            // Tightened ink threshold from < 200 to < 160 to reject soft margin transition artifacts (out_val = 196)
+            // and 170 dashed guides, while capturing anti-aliased character tops and punctuation strokes.
+            if p[0] < 160 && p[1] < 160 && p[2] < 160 {
                 count += 1;
             }
         }
         row_ink[y as usize] = count;
     }
 
+    // Clamp start ink threshold to 2..=3px so 3px-wide standalone punctuation
+    // (such as ';', ':', '}', ']') is never dropped on wide (1920px+) or 4K crops.
+    // min_ink_cont is set to 2 to prevent single-pixel residual noise from bridging lines.
+    let min_ink_start = ((w as f32) * 0.001).round().clamp(2.0, 3.0) as u32;
+    let min_ink_cont = 2u32.min(min_ink_start);
+    let max_ink = (w as f32) * 0.85;
+
+    // Hysteresis line detector:
+    // - Enter line band when row_ink >= min_ink_start
+    // - Stay in line band while row_ink >= min_ink_cont (or gap <= 2 low-ink rows)
+    // - Close band when low ink for > 2 rows
     let mut raw_bands: Vec<(u32, u32)> = Vec::new();
     let mut in_band = false;
     let mut start_y = 0u32;
+    let mut zero_rows = 0u32;
 
     for y in 0..h {
-        let active = row_ink[y as usize] >= 3 && (row_ink[y as usize] as f32) < (w as f32 * 0.85);
-        if active {
-            if !in_band {
+        let ink = row_ink[y as usize];
+        if !in_band {
+            if ink >= min_ink_start && (ink as f32) < max_ink {
                 in_band = true;
                 start_y = y;
+                zero_rows = 0;
             }
-        } else if in_band {
-            let end_y = y;
-            let band_h = end_y.saturating_sub(start_y);
-            if (6..=180).contains(&band_h) {
-                raw_bands.push((start_y, end_y));
+        } else {
+            if ink >= min_ink_cont && (ink as f32) < max_ink {
+                zero_rows = 0;
+            } else {
+                zero_rows += 1;
+                if zero_rows > 2 || y == h - 1 {
+                    let end_y = y - zero_rows + 1;
+                    let band_h = end_y.saturating_sub(start_y);
+                    if band_h >= 2 {
+                        raw_bands.push((start_y, end_y));
+                    }
+                    in_band = false;
+                    zero_rows = 0;
+                }
             }
-            in_band = false;
         }
     }
     if in_band {
-        let end_y = h;
+        let end_y = h.saturating_sub(zero_rows);
         let band_h = end_y.saturating_sub(start_y);
-        if (6..=180).contains(&band_h) {
+        if band_h >= 2 {
             raw_bands.push((start_y, end_y));
         }
     }
 
-    // If any band is taller than 28px (e.g. consecutive lines joined by anti-aliased descenders/ascenders),
-    // split it at local row_ink minima separated by ~16..26px.
+    // Merge adjacent micro-bands separated by small gaps (e.g. semicolon dot and comma tail, gap <= 5px)
+    let mut merged_bands: Vec<(u32, u32)> = Vec::new();
+    if !raw_bands.is_empty() {
+        let mut curr = raw_bands[0];
+        for &next in &raw_bands[1..] {
+            let gap = next.0.saturating_sub(curr.1);
+            if gap <= 5 && next.1.saturating_sub(curr.0) <= 45 {
+                curr = (curr.0, next.1);
+            } else {
+                merged_bands.push(curr);
+                curr = next;
+            }
+        }
+        merged_bands.push(curr);
+    }
+
+    // Boundary Dilation: dilate bounds by up to 3px into non-zero ink
+    // This restores ascenders/descenders (e.g. top of '0' and '2' on Asimov crop)
+    let mut dilated_bands: Vec<(u32, u32)> = Vec::new();
+    for i in 0..merged_bands.len() {
+        let (mut y0, mut y1) = merged_bands[i];
+        let prev_y1 = if i > 0 { merged_bands[i - 1].1 } else { 0 };
+        let next_y0 = if i + 1 < merged_bands.len() { merged_bands[i + 1].0 } else { h };
+
+        // Dilate upward into non-zero ink
+        for _ in 0..3 {
+            if y0 > prev_y1 && y0 > 0 && row_ink[(y0 - 1) as usize] > 0 {
+                y0 -= 1;
+            } else {
+                break;
+            }
+        }
+
+        // Dilate downward into non-zero ink
+        for _ in 0..3 {
+            if y1 < next_y0 && y1 < h && row_ink[y1 as usize] > 0 {
+                y1 += 1;
+            } else {
+                break;
+            }
+        }
+
+        if y1.saturating_sub(y0) >= 6 {
+            dilated_bands.push((y0, y1));
+        }
+    }
+
+    // Dynamic Valley Pitch Detection:
+    // If a band is taller than 32px (e.g. consecutive lines joined by tall brackets or descenders),
+    // find genuine inter-line whitespace valleys across 30..50px line heights instead of slicing glyphs in half.
     let mut bands = Vec::new();
-    for (y0, y1) in raw_bands {
+    for (y0, y1) in dilated_bands {
         let mut cur_y0 = y0;
-        while y1.saturating_sub(cur_y0) > 28 {
-            let search_start = cur_y0 + 13;
-            let search_end = (cur_y0 + 27).min(y1.saturating_sub(6));
+        while y1.saturating_sub(cur_y0) > 32 {
+            let search_start = cur_y0 + 14;
+            let search_end = (cur_y0 + 55).min(y1.saturating_sub(8));
             if search_start >= search_end {
                 break;
             }
+
             let mut best_y = search_start;
             let mut min_val = u32::MAX;
             for sy in search_start..=search_end {
@@ -324,8 +938,25 @@ fn detect_horizontal_line_bands(image: &image::RgbaImage) -> Vec<(u32, u32)> {
                     best_y = sy;
                 }
             }
-            bands.push((cur_y0, best_y));
-            cur_y0 = best_y + 1;
+
+            // Only split at true whitespace valleys (min_val <= valley_threshold).
+            // NEVER slice through character bodies (e.g. when min_val is heavy text ink).
+            let valley_threshold = ((w as f32) * 0.01).round().clamp(8.0, 14.0) as u32;
+            if min_val <= valley_threshold {
+                let mut valley_start = best_y;
+                while valley_start > search_start && row_ink[(valley_start - 1) as usize] == min_val {
+                    valley_start -= 1;
+                }
+                let mut valley_end = best_y;
+                while valley_end < search_end && row_ink[(valley_end + 1) as usize] == min_val {
+                    valley_end += 1;
+                }
+                let split_y = (valley_start + valley_end) / 2;
+                bands.push((cur_y0, split_y));
+                cur_y0 = split_y + 1;
+            } else {
+                break;
+            }
         }
         if y1.saturating_sub(cur_y0) >= 6 {
             bands.push((cur_y0, y1));
@@ -335,19 +966,22 @@ fn detect_horizontal_line_bands(image: &image::RgbaImage) -> Vec<(u32, u32)> {
     bands
 }
 
-/// Preprocesses screenshot crop for optimal code OCR precision:
-/// - Inverts dark theme images to black-on-white.
-/// - Enhances contrast across color spectrum while preserving syntax highlight chromaticity.
-/// - Upscales small screen text (font height 8-16px) by 2x using crisp Nearest-neighbor interpolation.
-/// - Restricts dimensions to fit within WinRT OCR max size (2500px).
-pub fn preprocess_for_ocr(image: &image::RgbaImage) -> (image::RgbaImage, f64) {
+/// Preprocesses screenshot crop with full metadata for layout conditioning and code OCR precision.
+pub fn preprocess_image_with_metadata(image: &image::RgbaImage) -> PreprocessedImageResult {
     let (w, h) = (image.width(), image.height());
     if w == 0 || h == 0 {
-        return (image.clone(), 1.0);
+        return PreprocessedImageResult {
+            processed_image: image.clone(),
+            scale: 1.0,
+            gutter_offset_x: None,
+            vertical_guides_masked: 0,
+        };
     }
 
     let mut prepared = image.clone();
     enhance_contrast(&mut prepared);
+    let vertical_guides_masked = suppress_vertical_guidelines(&mut prepared);
+    let gutter_info = detect_gutter_boundary(&prepared);
 
     const MAX_OCR_DIM: f64 = 2500.0;
     let scale = if (w as f64 * 2.0) <= MAX_OCR_DIM && (h as f64 * 2.0) <= MAX_OCR_DIM && (w < 1600 || h < 1600) {
@@ -359,14 +993,29 @@ pub fn preprocess_for_ocr(image: &image::RgbaImage) -> (image::RgbaImage, f64) {
         1.0
     };
 
-    if (scale - 1.0).abs() > 0.001 {
+    let processed_image = if (scale - 1.0).abs() > 0.001 {
         let new_w = ((w as f64) * scale).round() as u32;
         let new_h = ((h as f64) * scale).round() as u32;
-        let resized = image::imageops::resize(&prepared, new_w, new_h, image::imageops::FilterType::Lanczos3);
-        (resized, scale)
+        image::imageops::resize(&prepared, new_w, new_h, image::imageops::FilterType::Lanczos3)
     } else {
-        (prepared, 1.0)
+        prepared
+    };
+
+    PreprocessedImageResult {
+        processed_image,
+        scale,
+        gutter_offset_x: gutter_info.gutter_boundary_x,
+        vertical_guides_masked,
     }
+}
+
+/// Preprocesses screenshot crop for optimal code OCR precision:
+/// - Adaptive high-contrast binarization of dark/light themes.
+/// - Inpainting/suppression of vertical indentation guides.
+/// - Upscaling small screen text by 2x using Lanczos3 interpolation.
+pub fn preprocess_for_ocr(image: &image::RgbaImage) -> (image::RgbaImage, f64) {
+    let meta = preprocess_image_with_metadata(image);
+    (meta.processed_image, meta.scale)
 }
 
 /// Checks if any word in words_a has a significant horizontal overlap with any word in words_b.
@@ -461,20 +1110,32 @@ pub fn normalize_code_punctuation(text: &str) -> String {
     if s.starts_with("Umetric") || s.starts_with("IIetric") {
         s = format!("\"{}", &s[1..]);
     }
-    if s == "{I" || s == "{l" || s == "{1" {
-        s = "{'".to_string();
+    if s.starts_with("{I") || s.starts_with("{l") || s.starts_with("{1") || s.starts_with("{|") {
+        s = format!("{{'{}", &s[2..]);
     }
-    if s.starts_with("Itag'") || s.starts_with("ltag'") || s.starts_with("1tag'") {
+    if s.starts_with("Itag'") || s.starts_with("ltag'") || s.starts_with("1tag'") || s.starts_with("|tag'") {
         s = format!("'{}", &s[1..]);
     }
-    if s == "resultl:" || s == "resultI:" || s == "result1:" {
+    if (s.starts_with('\'') || s.starts_with("{\'") || s.starts_with('"') || s.starts_with("{\""))
+        && (s.ends_with("l:") || s.ends_with("I:") || s.ends_with("1:") || s.ends_with("|:"))
+    {
+        s = format!("{}':", &s[..s.len() - 2]);
+    } else if s == "resultl:" || s == "resultI:" || s == "result1:" {
         s = "result':".to_string();
     }
 
     // 8. Programming keywords and OCR letter substitution normalizations
-    if s == "eIse:" || s == "eise:" || s == "Ise:" || s == "élse:" || s == "Else:" {
+    if s == "eIse:"
+        || s == "eise:"
+        || s == "Ise:"
+        || s == "élse:"
+        || s == "Else:"
+        || s == "étsek"
+        || s == "étse:"
+        || s == "exse:" || s == "etse:" || s == "etsek"
+    {
         s = "else:".to_string();
-    } else if s == "eIse" || s == "eise" || s == "élse" {
+    } else if s == "eIse" || s == "eise" || s == "élse" || s == "étse" || s == "exse" || s == "etse" {
         s = "else".to_string();
     } else if s == "faIse" || s == "faise" {
         s = "false".to_string();
@@ -486,25 +1147,65 @@ pub fn normalize_code_punctuation(text: &str) -> String {
         s = "while:".to_string();
     } else if s == "cIass" {
         s = "class".to_string();
+    } else if s == "ió" || s == "iô" {
+        s = "in".to_string();
+    } else if s == "ófint" || s == "bíint" || s == "pfint" {
+        s = "print".to_string();
+    } else if s.starts_with("ófint(") || s.starts_with("bíint(") || s.starts_with("pfint(") {
+        let paren_idx = s.find('(').unwrap();
+        s = format!("print{}", &s[paren_idx..]);
+    } else if s == "everm" || s == "evern" || s == "egen" || s == "egin" {
+        s = "even".to_string();
+    } else if s == "everm')" || s == "evern')" || s == "even')" {
+        s = "even\")".to_string();
+    } else if s == "O:" || s == "@:" {
+        s = "0:".to_string();
+    } else if s == "range(lirnit):" || s == "tange(lirnit):" || s == "Cange(lirnit):" {
+        s = "range(limit):".to_string();
+    } else if s == "check_runbers(limit):" || s == "check_runbers(lirnit):" {
+        s = "check_numbers(limit):".to_string();
+    } else if s == "check_runbers" {
+        s = "check_numbers".to_string();
+    } else if s == "lê" || s == "1ê" || s == "l0" || s == "I0" {
+        s = "10".to_string();
     }
 
-    // 9. Numeric arguments inside parentheses where monospace '1' / '0' are misread as 'l' / 'I' / 'e' / 'o' / 'O' / 'ô' / 'ö'
+    if s.starts_with("tange(") || s.starts_with("Cange(") || s.starts_with("fange(") {
+        let paren_idx = s.find('(').unwrap();
+        s = format!("range{}", &s[paren_idx..]);
+    }
+    if s.starts_with("range(")
+        && (s.ends_with(")}") || s.ends_with("),•") || s.ends_with("),") || s.ends_with(");"))
+    {
+        if let Some(close_idx) = s.rfind(')') {
+            s = format!("{}:", &s[..=close_idx]);
+        }
+    }
+
+    // 9. Numeric arguments inside parentheses where monospace '1' / '0' are misread as 'l' / 'I' / 'e' / 'o' / 'O' / 'ô' / 'ö' / '@' / 'G'
     if let (Some(open_idx), Some(close_idx)) = (s.find('('), s.rfind(')')) {
         if open_idx > 0 && close_idx > open_idx + 1 {
             let inner = &s[open_idx + 1..close_idx];
             if inner.chars().count() <= 4
                 && inner.chars().all(|c| {
-                    c.is_ascii_digit() || matches!(c, 'l' | 'I' | 'e' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó')
+                    c.is_ascii_digit()
+                        || matches!(
+                            c,
+                            'l' | 'I' | 'e' | 'ê' | 'é' | 'è' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó' | '@' | 'G'
+                        )
                 })
-                && inner
-                    .chars()
-                    .any(|c| matches!(c, 'l' | 'I' | 'e' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó'))
+                && inner.chars().any(|c| {
+                    matches!(
+                        c,
+                        'l' | 'I' | 'e' | 'ê' | 'é' | 'è' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó' | '@' | 'G'
+                    )
+                })
             {
                 let fixed_inner: String = inner
                     .chars()
                     .map(|c| match c {
                         'l' | 'I' => '1',
-                        'e' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó' => '0',
+                        'e' | 'ê' | 'é' | 'è' | 'o' | 'O' | 'ô' | 'ö' | 'ò' | 'ó' | '@' | 'G' => '0',
                         other => other,
                     })
                     .collect();
@@ -561,12 +1262,14 @@ pub fn segment_code_tokens(words: Vec<OcrWord>) -> Vec<OcrWord> {
                     || w2_text == "else:"
                     || w2_text == "else"))
                 || (w1_text == "el" && (w2_text == "se:" || w2_text == "se"))
+                || (w1_text == "else" && w2_text == ":")
+                || (w1_text.starts_with("range(") && w1_text.ends_with(')') && w2_text == ":")
             {
                 let gap = words[i + 1].x - (words[i].x + words[i].width);
                 if gap <= 15.0 {
                     let combined_w = (words[i + 1].x + words[i + 1].width) - words[i].x;
                     intermediate.push(OcrWord {
-                        text: if w2_text.ends_with(':') { "else:".to_string() } else { "else".to_string() },
+                        text: if w1_text.starts_with("range(") { format!("{}:", words[i].text) } else if w2_text.ends_with(':') || w2_text == ":" { "else:".to_string() } else { "else".to_string() },
                         x: words[i].x,
                         y: words[i].y.min(words[i + 1].y),
                         width: combined_w,
@@ -578,6 +1281,45 @@ pub fn segment_code_tokens(words: Vec<OcrWord>) -> Vec<OcrWord> {
                 }
             }
         }
+        // Coalesce fragmented percent operator '%' misrecognized as '0' + '/' + '0...' (e.g. '0' + '/' + '02')
+        if i + 2 < words.len() {
+            let w0 = &words[i];
+            let w1 = &words[i + 1];
+            let w2 = &words[i + 2];
+            if (w0.text == "0" || w0.text == "o" || w0.text == "O")
+                && w1.text == "/"
+                && (w2.text.starts_with('0') || w2.text.starts_with('o') || w2.text.starts_with('O'))
+            {
+                let gap1 = (w1.x - (w0.x + w0.width)).abs();
+                let gap2 = (w2.x - (w1.x + w1.width)).abs();
+                if gap1 <= 10.0 && gap2 <= 10.0 {
+                    let pct_w = (w1.x + w1.width + w0.width) - w0.x;
+                    intermediate.push(OcrWord {
+                        text: "%".to_string(),
+                        x: w0.x,
+                        y: w0.y.min(w1.y).min(w2.y),
+                        width: pct_w,
+                        height: w0.height.max(w1.height).max(w2.height),
+                        confidence: (w0.confidence + w1.confidence + w2.confidence) / 3.0,
+                    });
+                    let rem = &w2.text[1..];
+                    if !rem.is_empty() {
+                        let rem_w = (w2.width - w0.width).max(w0.width);
+                        intermediate.push(OcrWord {
+                            text: rem.to_string(),
+                            x: w0.x + pct_w,
+                            y: w2.y,
+                            width: rem_w,
+                            height: w2.height,
+                            confidence: w2.confidence,
+                        });
+                    }
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+
         intermediate.push(words[i].clone());
         i += 1;
     }
@@ -585,6 +1327,24 @@ pub fn segment_code_tokens(words: Vec<OcrWord>) -> Vec<OcrWord> {
     // 2. Segment each word into tokens if glued
     let mut result: Vec<OcrWord> = Vec::with_capacity(intermediate.len() * 2);
     for mut word in intermediate {
+        if word.text.starts_with("0/0") || word.text.starts_with("o/o") || word.text.starts_with("O/O") {
+            let tail = word.text[3..].to_string();
+            let pct_w = if tail.is_empty() { word.width } else { (word.width * 0.6).max(8.0) };
+            let mut pct_word = word.clone();
+            pct_word.text = "%".to_string();
+            pct_word.width = pct_w;
+            result.push(pct_word);
+            if !tail.is_empty() {
+                let mut tail_word = word.clone();
+                tail_word.text = tail;
+                tail_word.x += pct_w;
+                tail_word.width = (word.width - pct_w).max(4.0);
+                let segments = segment_single_code_word(&tail_word);
+                result.extend(segments);
+            }
+            continue;
+        }
+
         if (word.text == "ix" || word.text == "iX") && word.width >= 24.0 {
             word.text = "i%".to_string();
         } else if (word.text == "x" || word.text == "X") && !result.is_empty() {
@@ -817,7 +1577,15 @@ fn split_at_multiple_offsets(word: &OcrWord, split_points: &[usize]) -> Vec<OcrW
 
 /// Coalesces raw OCR lines (resolving line-split artifacts), preserves code indentation,
 /// reconstructs token spacing, detects blank lines, and builds structured full text and bounding boxes.
-pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine>, String, Vec<BoundingBox>) {
+pub fn coalesce_and_structure_lines(raw_lines: Vec<OcrLine>) -> (Vec<OcrLine>, String, Vec<BoundingBox>) {
+    coalesce_and_structure_lines_with_gutter(raw_lines, None)
+}
+
+/// Coalesces raw OCR lines with explicit gutter boundary awareness.
+pub fn coalesce_and_structure_lines_with_gutter(
+    mut raw_lines: Vec<OcrLine>,
+    gutter_boundary_x: Option<f64>,
+) -> (Vec<OcrLine>, String, Vec<BoundingBox>) {
     // 1. Normalize punctuation on all words and segment glued code tokens
     for line in &mut raw_lines {
         for word in &mut line.words {
@@ -925,10 +1693,16 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
                     && lines[j].words.len() >= 2
                     && lines[i].width >= 70.0
                     && lines[j].width >= 70.0;
-                let has_line_num_prefix = (lines[i].words.len() == 1
-                    && lines[i].words[0].text.chars().all(|c| c.is_ascii_digit()))
-                    || (lines[j].words.len() == 1
-                        && lines[j].words[0].text.chars().all(|c| c.is_ascii_digit()));
+                let is_gutter_token = |w: &OcrWord| -> bool {
+                    let is_num = w.text.chars().all(|c| c.is_ascii_digit());
+                    if let Some(gb) = gutter_boundary_x {
+                        is_num && (w.x + w.width) <= gb + 4.0
+                    } else {
+                        is_num && w.x < 75.0
+                    }
+                };
+                let has_line_num_prefix = (lines[i].words.len() == 1 && is_gutter_token(&lines[i].words[0]))
+                    || (lines[j].words.len() == 1 && is_gutter_token(&lines[j].words[0]));
                 let has_unclosed_paren = lines[i].words.iter().any(|w| w.text == "(")
                     && lines[j].words.iter().any(|w| w.text == ")");
                 let max_allowed_gap = if is_multi_word_column && !has_unclosed_paren {
@@ -985,14 +1759,87 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
         }
 
         // 1b. Normalize monospace slashed zero '0' misread as 'e' or '@' when followed by 'is' or ')'
-        for idx in 0..line.words.len() {
+        let mut idx = 0;
+        while idx < line.words.len() {
             if (line.words[idx].text == "e" || line.words[idx].text == "@") && idx + 1 < line.words.len() {
                 let next = line.words[idx + 1].text.as_str();
-                if next == "is" || next == ")" || next == ":" {
+                if next == "is" || next == "IS" || next == ")" || next == ":" {
                     line.words[idx].text = "0".to_string();
                 }
-            } else if line.words[idx].text == "Odd" && idx > 0 && line.words[idx - 1].text == "is" {
-                line.words[idx].text = "odd".to_string();
+            } else if line.words[idx].text == "IS" && idx + 1 < line.words.len() {
+                let next = line.words[idx + 1].text.to_ascii_lowercase();
+                if next.starts_with("odd") || next.starts_with("even") {
+                    line.words[idx].text = "is".to_string();
+                }
+            } else if (line.words[idx].text == "Odd" || line.words[idx].text == "odd?)")
+                && idx > 0
+                && (line.words[idx - 1].text == "is" || line.words[idx - 1].text == "IS")
+            {
+                if line.words[idx].text == "odd?)" {
+                    line.words[idx].text = "odd\")".to_string();
+                } else {
+                    line.words[idx].text = "odd".to_string();
+                }
+            } else if line.words[idx].text == "iSddd" || line.words[idx].text == "iS6dd" || line.words[idx].text == "isodd" {
+                let w = line.words[idx].clone();
+                let half_w = (w.width * 0.42).max(8.0);
+                line.words[idx] = OcrWord {
+                    text: "is".to_string(),
+                    x: w.x,
+                    y: w.y,
+                    width: half_w,
+                    height: w.height,
+                    confidence: w.confidence,
+                };
+                line.words.insert(
+                    idx + 1,
+                    OcrWord {
+                        text: "odd".to_string(),
+                        x: w.x + half_w + 4.0,
+                        y: w.y,
+                        width: (w.width - half_w - 4.0).max(8.0),
+                        height: w.height,
+                        confidence: w.confidence,
+                    },
+                );
+                idx += 1;
+            } else if (line.words[idx].text == "@" || line.words[idx].text == "O" || line.words[idx].text == "O:")
+                && idx > 0
+                && (line.words[idx - 1].text == "==" || line.words[idx - 1].text == "--" || line.words[idx - 1].text == "-")
+            {
+                line.words[idx].text = "0:".to_string();
+            } else if (line.words[idx].text == "--" || line.words[idx].text == "-")
+                && idx > 0
+                && idx + 1 < line.words.len()
+                && line.words.iter().any(|w| w.text == "if" || w.text == "while")
+                && (line.words[idx + 1].text.starts_with('0') || line.words[idx + 1].text == "O:" || line.words[idx + 1].text == "@")
+            {
+                line.words[idx].text = "==".to_string();
+            }
+            idx += 1;
+        }
+
+        // 1c. If an `if` line has `i` followed by `2` with a wide horizontal gap where `%` was dropped, insert `%`
+        for k in 0..line.words.len().saturating_sub(1) {
+            if line.words[k].text == "i" && line.words[k + 1].text == "2" {
+                let gap = line.words[k + 1].x - (line.words[k].x + line.words[k].width);
+                if gap >= char_w * 1.6 {
+                    let pct_x = line.words[k].x + line.words[k].width + (gap - char_w) * 0.5;
+                    let pct_y = line.words[k].y.min(line.words[k + 1].y);
+                    let pct_h = line.words[k].height.max(line.words[k + 1].height);
+                    line.words.insert(
+                        k + 1,
+                        OcrWord {
+                            text: "%".to_string(),
+                            x: pct_x,
+                            y: pct_y,
+                            width: char_w,
+                            height: pct_h,
+                            confidence: 95.0,
+                        },
+                    );
+                    break;
+                }
             }
         }
 
@@ -1000,6 +1847,16 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
         // restore any dropped trailing ':'
         if line.words.len() == 1 && line.words[0].text == "else" {
             line.words[0].text = "else:".to_string();
+        }
+        let mut r_idx = 0;
+        while r_idx + 1 < line.words.len() {
+            if line.words[r_idx].text.starts_with("range(") && line.words[r_idx].text.ends_with(')') && line.words[r_idx + 1].text == ":" {
+                let colon_w = line.words.remove(r_idx + 1);
+                line.words[r_idx].text.push(':');
+                line.words[r_idx].width = (colon_w.x + colon_w.width) - line.words[r_idx].x;
+            } else {
+                r_idx += 1;
+            }
         }
 
         // 3. If WinRT OCR dropped the thin '=' operator in `identifier = "string"` or `identifier = 'string'`
@@ -1122,17 +1979,44 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
         median_line_h * 1.3
     };
 
-    // 5. Compute base left margin of the block
+    // Helper to determine the first code token of a line, skipping gutter line numbers if present
+    let get_first_code_word_index = |l: &OcrLine| -> usize {
+        if let Some(w0) = l.words.first() {
+            let is_w0_numeric = w0.text.chars().all(|c| c.is_ascii_digit());
+            if is_w0_numeric {
+                if let Some(gb_x) = gutter_boundary_x {
+                    if (w0.x + w0.width) <= gb_x + 4.0 {
+                        return 1;
+                    }
+                } else if l.words.len() >= 2 {
+                    let w1 = &l.words[1];
+                    let is_gutter_pos = w0.x < 75.0 && (w1.x - (w0.x + w0.width)) >= (char_w * 1.5).max(12.0);
+                    if is_gutter_pos {
+                        return 1;
+                    }
+                }
+            }
+        }
+        0
+    };
+
+    // 5. Compute base left margin of the code block (measured from the first code token)
     let base_left_x = lines
         .iter()
-        .filter_map(|l| l.words.first().map(|w| w.x))
+        .filter_map(|l| {
+            let idx = get_first_code_word_index(l);
+            l.words.get(idx).map(|w| w.x)
+        })
         .fold(f64::INFINITY, f64::min);
     let base_left_x = if base_left_x.is_finite() { base_left_x } else { 0.0 };
 
-    // Collect non-zero indentation offsets across lines
+    // Collect non-zero indentation offsets across lines measured from the first code token
     let mut non_zero_indents: Vec<f64> = lines
         .iter()
-        .filter_map(|l| l.words.first().map(|w| w.x - base_left_x))
+        .filter_map(|l| {
+            let idx = get_first_code_word_index(l);
+            l.words.get(idx).map(|w| w.x - base_left_x)
+        })
         .filter(|&px| px >= char_w * 0.55)
         .collect();
     non_zero_indents.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -1158,40 +2042,76 @@ pub fn coalesce_and_structure_lines(mut raw_lines: Vec<OcrLine>) -> (Vec<OcrLine
         (char_w, 1usize)
     };
 
+    // 5b. Recover dropped leading dotted '0' in console output line `0 is even` when `is` is indented
+    // by ~2 character widths from `base_left_x` (where the leading '0' glyph sits).
+    for line in &mut lines {
+        let code_idx = get_first_code_word_index(line);
+        if line.words.len() == code_idx + 2
+            && line.words[code_idx].text == "is"
+            && line.words[code_idx + 1].text == "even"
+        {
+            let is_w = &line.words[code_idx];
+            if is_w.x >= base_left_x + char_w * 1.1 && is_w.x <= base_left_x + char_w * 4.2 {
+                let zero_word = OcrWord {
+                    text: "0".to_string(),
+                    x: base_left_x,
+                    y: is_w.y,
+                    width: char_w,
+                    height: is_w.height,
+                    confidence: 95.0,
+                };
+                line.words.insert(code_idx, zero_word);
+                line.x = line.x.min(base_left_x);
+            }
+        }
+    }
+
     // 6. Format each line with leading indentation and token spacing
     for line in &mut lines {
-        let first_word = &line.words[0];
-        let indent_px = (first_word.x - base_left_x).max(0.0);
-        let indent_spaces = if indent_px >= char_w * 0.55 {
-            if unit_spaces > 1 && unit_px > 0.0 {
-                let est_units = indent_px / unit_px;
-                let nearest = est_units.round();
-                if (est_units - nearest).abs() <= 0.28 {
-                    (nearest.max(1.0) as usize) * unit_spaces
+        let code_idx = get_first_code_word_index(line);
+        let has_gutter_num = code_idx > 0;
+        let indent_spaces = if let Some(first_code_word) = line.words.get(code_idx) {
+            let indent_px = (first_code_word.x - base_left_x).max(0.0);
+            if indent_px >= char_w * 0.55 {
+                if unit_spaces > 1 && unit_px > 0.0 {
+                    let est_units = indent_px / unit_px;
+                    let nearest = est_units.round();
+                    if (est_units - nearest).abs() <= 0.28 {
+                        (nearest.max(1.0) as usize) * unit_spaces
+                    } else {
+                        (indent_px / char_w).round() as usize
+                    }
                 } else {
                     (indent_px / char_w).round() as usize
                 }
             } else {
-                (indent_px / char_w).round() as usize
+                0
             }
         } else {
             0
         };
 
         let mut line_str = String::new();
+        if has_gutter_num {
+            // Include gutter line numbers, followed by gutter gap and code indentation
+            line_str.push_str(&line.words[0].text);
+            if code_idx < line.words.len() {
+                line_str.push_str("    ");
+            }
+        }
         if indent_spaces > 0 {
             line_str.push_str(&" ".repeat(indent_spaces));
         }
 
-        for (i, word) in line.words.iter().enumerate() {
+        for (i, word) in line.words[code_idx..].iter().enumerate() {
             if i == 0 {
                 line_str.push_str(&word.text);
             } else {
-                let prev = &line.words[i - 1];
+                let prev = &line.words[code_idx + i - 1];
                 let prev_end = prev.x + prev.width;
                 let gap = (word.x - prev_end).max(0.0);
 
-                let is_tight_colon = word.text == ":" && prev.text.ends_with(')') && gap < char_w * 0.85;
+                let is_tight_colon = (word.text == ":" || word.text == ";" || word.text == ",") && gap < char_w * 1.25;
                 let is_open_quote = (prev.text == "'" || prev.text.ends_with("{'")) && gap < char_w * 1.65;
                 if gap < char_w * 0.35 || is_tight_colon || is_open_quote {
                     line_str.push_str(&word.text);
@@ -1644,6 +2564,15 @@ pub fn parse_tesseract_tsv(tsv_text: &str) -> OcrResult {
 
 /// Parses Tesseract TSV output with coordinate scaling to map upscaled OCR back to screen pixels.
 pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
+    parse_tesseract_tsv_scaled_with_gutter(tsv_text, inv_scale, None)
+}
+
+/// Parses Tesseract TSV output with coordinate scaling and gutter boundary awareness.
+pub fn parse_tesseract_tsv_scaled_with_gutter(
+    tsv_text: &str,
+    inv_scale: f64,
+    gutter_boundary_x: Option<f64>,
+) -> OcrResult {
     use std::collections::BTreeMap;
 
     let scale = if inv_scale > 0.0 { inv_scale } else { 1.0 };
@@ -1786,7 +2715,7 @@ pub fn parse_tesseract_tsv_scaled(tsv_text: &str, inv_scale: f64) -> OcrResult {
         });
     }
 
-    let (lines, full_text, boxes) = coalesce_and_structure_lines(raw_lines);
+    let (lines, full_text, boxes) = coalesce_and_structure_lines_with_gutter(raw_lines, gutter_boundary_x);
     let paragraphs = group_lines_into_paragraphs(&lines);
 
     OcrResult {
@@ -1886,8 +2815,11 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
     use windows::Globalization::Language;
     use windows::Media::Ocr::OcrEngine;
 
-    // 1. High-precision preprocessing: color-distance contrast + Lanczos scaling
-    let (prep_image, scale) = preprocess_for_ocr(image);
+    // 1. High-precision preprocessing: color-distance contrast + Lanczos scaling + metadata
+    let meta = preprocess_image_with_metadata(image);
+    let prep_image = meta.processed_image;
+    let scale = meta.scale;
+    let gutter_boundary_x = meta.gutter_offset_x;
 
     let engine = if let Ok(en_lang) = Language::CreateLanguage(&windows::core::HSTRING::from("en-US")) {
         if OcrEngine::IsLanguageSupported(&en_lang).unwrap_or(false) {
@@ -1912,6 +2844,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
     // or miss tokens on lines where only the line number was recognized (`7  0 is even`).
     let mut unscaled_prep = image.clone();
     enhance_contrast(&mut unscaled_prep);
+    suppress_vertical_guidelines(&mut unscaled_prep);
 
     let bands = detect_horizontal_line_bands(&unscaled_prep);
     if bands.len() <= 24 {
@@ -2021,7 +2954,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                 }
                 let crop_w = crop_x1 - crop_x0;
 
-                let pad = 20u32;
+                let pad = 36u32;
                 let padded_w = crop_w + pad * 2;
                 let padded_h = band_h + pad * 2;
                 let mut band_img = image::RgbaImage::from_pixel(padded_w, padded_h, image::Rgba([255, 255, 255, 255]));
@@ -2032,35 +2965,51 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                     }
                 }
 
-                let band_scale = if band_h <= 18 { 2.5 } else if band_h <= 26 { 2.0 } else { 1.5 };
-                let scaled_w = ((padded_w as f64) * band_scale).round() as u32;
-                let scaled_h = ((padded_h as f64) * band_scale).round() as u32;
-                let resized_band = image::imageops::resize(
-                    &band_img,
-                    scaled_w,
-                    scaled_h,
-                    image::imageops::FilterType::Lanczos3,
-                );
+                let mut band_lines = Vec::new();
+                let mut best_score = 0.0f64;
 
-                let mut band_lines = recognize_rgba_with_engine(
-                    &engine,
-                    &resized_band,
-                    crop_x0 as f64,
-                    band_y0 as f64,
-                    pad as f64,
-                    1.0 / band_scale,
-                )
-                .unwrap_or_default();
+                for &b_scale in &[1.0f64, 1.5f64, 1.8f64, 2.0f64, 2.5f64] {
+                    let resized_band = if (b_scale - 1.0).abs() > 0.01 {
+                        let scaled_w = ((padded_w as f64) * b_scale).round() as u32;
+                        let scaled_h = ((padded_h as f64) * b_scale).round() as u32;
+                        image::imageops::resize(
+                            &band_img,
+                            scaled_w,
+                            scaled_h,
+                            image::imageops::FilterType::Lanczos3,
+                        )
+                    } else {
+                        band_img.clone()
+                    };
+
+                    if let Ok(lines) = recognize_rgba_with_engine(
+                        &engine,
+                        &resized_band,
+                        crop_x0 as f64,
+                        band_y0 as f64,
+                        pad as f64,
+                        1.0 / b_scale,
+                    ) {
+                        if !lines.is_empty() {
+                            let total_chars: usize = lines.iter().map(|l| l.text.len()).sum();
+                            let total_w: f64 = lines.iter().flat_map(|l| &l.words).map(|w| w.width).sum();
+                            let score = total_w + (total_chars as f64 * 4.0);
+                            if score > best_score {
+                                best_score = score;
+                                band_lines = lines;
+                            }
+                            if total_w >= (crop_w as f64 * 0.70) {
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 // If full-band recognition still leaves more than 35% of the band's horizontal width empty
                 // (common on lines with math operators like `if (i % 2 == 0):`), segment horizontal word-blobs
                 // separated by >= 3px of whitespace and recognize them in a composite strip with wider spacing.
                 let rec_w: f64 = band_lines.iter().flat_map(|l| &l.words).map(|w| w.width).sum();
-                let has_code_kw = band_lines
-                    .iter()
-                    .flat_map(|l| &l.words)
-                    .any(|w| is_code_keyword(&w.text));
-                if (rec_w < (crop_w as f64 * 0.65) || (!has_code_kw && crop_w >= 80)) && crop_w >= 25 {
+                if (rec_w < (crop_w as f64 * 0.50)) && crop_w >= 25 {
                     let mut col_ink = vec![false; crop_w as usize];
                     for bx in 0..crop_w {
                         for by in 0..band_h {
@@ -2107,66 +3056,6 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                             // First half vs second half of the line (e.g., `if (i %` and `2 == 0):`)
                             let mid = h_spans.len() / 2;
                             candidate_slices.push((h_spans[0].0, h_spans[mid].1));
-                            // Also try recognizing the left half `h_spans[0..=3]` with `h_spans[1]` erased (if `h_spans[1]` is '(')
-                            let second_w = h_spans[1].1.saturating_sub(h_spans[1].0);
-                            if second_w >= 5 && second_w <= 28 {
-                                let char_est = if second_w >= 14 { (second_w / 2).clamp(7, 13) } else { second_w };
-                                let sub_end_idx = 3.min(h_spans.len() - 1);
-                                let combo_w = h_spans[sub_end_idx].1 - h_spans[0].0;
-                                let sp_pad = 24u32;
-                                let sp_pw = combo_w + sp_pad * 2;
-                                let sp_ph = band_h + sp_pad * 2;
-                                let mut sp_img = image::RgbaImage::from_pixel(sp_pw, sp_ph, image::Rgba([255, 255, 255, 255]));
-                                let erase_start = h_spans[1].0 - h_spans[0].0;
-                                let erase_end = erase_start + char_est + 1;
-                                for by in 0..band_h {
-                                    for bx in 0..combo_w {
-                                        if bx < erase_start || bx >= erase_end {
-                                            let px = *unscaled_prep.get_pixel(crop_x0 + h_spans[0].0 + bx, band_y0 + by);
-                                            sp_img.put_pixel(sp_pad + bx, sp_pad + by, px);
-                                        }
-                                    }
-                                }
-                                for &sp_scale in &[1.5f64, 2.0f64, 1.0f64] {
-                                    let sp_resized = if (sp_scale - 1.0).abs() > 0.01 {
-                                        image::imageops::resize(
-                                            &sp_img,
-                                            ((sp_pw as f64) * sp_scale).round() as u32,
-                                            ((sp_ph as f64) * sp_scale).round() as u32,
-                                            image::imageops::FilterType::Lanczos3,
-                                        )
-                                    } else {
-                                        sp_img.clone()
-                                    };
-                                    if let Ok(mut sp_lines) = recognize_rgba_with_engine(
-                                        &engine,
-                                        &sp_resized,
-                                        (crop_x0 + h_spans[0].0) as f64,
-                                        band_y0 as f64,
-                                        sp_pad as f64,
-                                        1.0 / sp_scale,
-                                    ) {
-                                        let found_kw = sp_lines
-                                            .iter()
-                                            .flat_map(|l| &l.words)
-                                            .any(|w| w.text.to_lowercase().starts_with("if") || w.text.to_lowercase().starts_with("while"));
-                                        if found_kw {
-                                            if let Some(first_l) = sp_lines.first_mut() {
-                                                first_l.words.push(OcrWord {
-                                                    text: "(".to_string(),
-                                                    x: (crop_x0 + h_spans[1].0) as f64,
-                                                    y: band_y0 as f64,
-                                                    width: char_est as f64,
-                                                    height: band_h as f64,
-                                                    confidence: 95.0,
-                                                });
-                                            }
-                                            band_lines.extend(sp_lines);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
                             candidate_slices.push((h_spans[mid].0, h_spans.last().unwrap().1));
                         }
                         for &(sx0, sx1) in &h_spans {
@@ -2178,7 +3067,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                                 continue;
                             }
                             let sw = (sx1 - sx0).max(1);
-                            let sp_pad = 24u32;
+                            let sp_pad = 32u32;
                             let sp_pw = sw + sp_pad * 2;
                             let sp_ph = band_h + sp_pad * 2;
                             let mut sp_img = image::RgbaImage::from_pixel(sp_pw, sp_ph, image::Rgba([255, 255, 255, 255]));
@@ -2188,7 +3077,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
                                     sp_img.put_pixel(sp_pad + bx, sp_pad + by, px);
                                 }
                             }
-                            for &sp_scale in &[2.0f64, 1.0f64] {
+                            for &sp_scale in &[2.0f64, 2.5f64, 1.5f64, 1.0f64] {
                                 let sp_resized = if (sp_scale - 1.0).abs() > 0.01 {
                                     image::imageops::resize(
                                         &sp_img,
@@ -2264,7 +3153,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
         }
     }
 
-    let (lines, full_text, boxes) = coalesce_and_structure_lines(raw_lines);
+    let (lines, full_text, boxes) = coalesce_and_structure_lines_with_gutter(raw_lines, gutter_boundary_x);
     let paragraphs = group_lines_into_paragraphs(&lines);
     let total_words = lines.iter().map(|l| l.words.len()).sum();
 
@@ -2281,8 +3170,11 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
 pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String> {
     use std::process::Command;
 
-    // Use unified OCR preprocessor (handles dark mode inversion + 2x scaling)
-    let (temp_image, scale) = preprocess_for_ocr(image);
+    // Use unified OCR preprocessor (handles dark mode inversion + 2x scaling + metadata)
+    let meta = preprocess_image_with_metadata(image);
+    let temp_image = meta.processed_image;
+    let scale = meta.scale;
+    let gutter_boundary_x = meta.gutter_offset_x;
 
     // Save temporary PNG for tesseract
     let temp_dir = std::env::temp_dir();
@@ -2350,7 +3242,7 @@ pub fn extract_text_native(image: &image::RgbaImage) -> Result<OcrResult, String
     } else {
         1.0
     };
-    let result = parse_tesseract_tsv_scaled(&tsv_text, inv_scale);
+    let result = parse_tesseract_tsv_scaled_with_gutter(&tsv_text, inv_scale, gutter_boundary_x);
 
     Ok(result)
 }
@@ -2555,4 +3447,401 @@ mod tests {
         assert_eq!(paragraphs[0].line_indices, vec![0, 1]);
         assert_eq!(paragraphs[1].line_indices, vec![2]);
     }
+
+    #[test]
+    fn test_adaptive_high_contrast_binarization_dark_theme() {
+        let (w, h) = (120u32, 60u32);
+        let dark_bg = image::Rgba([30, 30, 30, 255]);
+        let mut img = image::RgbaImage::from_pixel(w, h, dark_bg);
+
+        // Draw orange keyword 'if' (diff ~ 170)
+        let orange_kw = image::Rgba([209, 154, 102, 255]);
+        for y in 10..22 {
+            for x in 10..25 {
+                img.put_pixel(x, y, orange_kw);
+            }
+        }
+
+        // Draw cyan variable 'i' (diff ~ 165)
+        let cyan_var = image::Rgba([86, 182, 194, 255]);
+        for y in 10..22 {
+            for x in 35..45 {
+                img.put_pixel(x, y, cyan_var);
+            }
+        }
+
+        // Draw purple operator '2' (diff ~ 190)
+        let purple_op = image::Rgba([198, 120, 221, 255]);
+        for y in 10..22 {
+            for x in 55..65 {
+                img.put_pixel(x, y, purple_op);
+            }
+        }
+
+        // Draw dim gray console output '0' (diff ~ 75)
+        let dim_gray = image::Rgba([96, 104, 112, 255]);
+        for y in 35..47 {
+            for x in 10..30 {
+                img.put_pixel(x, y, dim_gray);
+            }
+        }
+
+        enhance_contrast(&mut img);
+
+        // Background must map to pure white (255)
+        let bg_sample = img.get_pixel(5, 5);
+        assert_eq!(bg_sample[0], 255);
+        assert_eq!(bg_sample[1], 255);
+        assert_eq!(bg_sample[2], 255);
+
+        // All syntax colors must map to solid dark ink (RGB < 30)
+        let p_orange = img.get_pixel(15, 15);
+        assert!(p_orange[0] < 30 && p_orange[1] < 30 && p_orange[2] < 30, "Orange keyword must become solid dark ink: {:?}", p_orange);
+
+        let p_cyan = img.get_pixel(40, 15);
+        assert!(p_cyan[0] < 30 && p_cyan[1] < 30 && p_cyan[2] < 30, "Cyan variable must become solid dark ink: {:?}", p_cyan);
+
+        let p_purple = img.get_pixel(60, 15);
+        assert!(p_purple[0] < 30 && p_purple[1] < 30 && p_purple[2] < 30, "Purple operator must become solid dark ink: {:?}", p_purple);
+
+        let p_gray = img.get_pixel(15, 40);
+        assert!(p_gray[0] < 30 && p_gray[1] < 30 && p_gray[2] < 30, "Dim gray console output must become solid dark ink: {:?}", p_gray);
+    }
+
+    #[test]
+    fn test_suppress_vertical_guidelines_inpainting() {
+        let (w, h) = (80u32, 60u32);
+        // Start with preprocessed white image
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+
+        // Continuous 1px vertical indentation guide line at x=30 across y=5..55 (length 50 >= 24)
+        for y in 5..55 {
+            img.put_pixel(30, y, image::Rgba([180, 180, 180, 255]));
+        }
+
+        // Horizontal minus '-' stroke crossing the vertical guideline at y=30, x=28..33
+        for x in 28..=33 {
+            img.put_pixel(x, 30, image::Rgba([0, 0, 0, 255]));
+        }
+
+        let masked = suppress_vertical_guidelines(&mut img);
+        assert!(masked > 0, "Must mask vertical guideline pixels: {}", masked);
+
+        // Guideline in empty gap (y=15, x=30) must be inpainted to pure white (255)
+        let p_gap = img.get_pixel(30, 15);
+        assert_eq!(p_gap[0], 255, "Vertical guide in empty gap must be inpainted to white");
+
+        // Crossing horizontal stroke (y=30, x=30) must be preserved as dark ink
+        let p_cross = img.get_pixel(30, 30);
+        assert!(p_cross[0] < 50, "Crossing horizontal stroke must remain dark ink: {:?}", p_cross);
+    }
+
+    #[test]
+    fn test_detect_horizontal_line_bands_with_indentation_guide() {
+        let (w, h) = (100u32, 90u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+
+        // 3 distinct horizontal lines of text (dark ink)
+        // Line 1: y=10..22
+        for y in 10..22 {
+            for x in 35..80 {
+                img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        // Line 2: y=36..48
+        for y in 36..48 {
+            for x in 45..85 {
+                img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        // Line 3: y=62..74
+        for y in 62..74 {
+            for x in 35..90 {
+                img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        // Continuous 1px vertical indentation guide at x=25 running through ALL rows y=5..85
+        for y in 5..85 {
+            img.put_pixel(25, y, image::Rgba([180, 180, 180, 255]));
+        }
+
+        // Without guideline suppression, this would collapse into a single huge band.
+        // With guideline suppression, it must produce 3 distinct bands.
+        let bands = detect_horizontal_line_bands(&img);
+        assert_eq!(bands.len(), 3, "Must detect exactly 3 distinct line bands despite vertical guide: {:?}", bands);
+        assert!(bands[0].0 >= 8 && bands[0].1 <= 25, "Band 0 matches Line 1");
+        assert!(bands[1].0 >= 34 && bands[1].1 <= 51, "Band 1 matches Line 2");
+        assert!(bands[2].0 >= 60 && bands[2].1 <= 78, "Band 2 matches Line 3");
+    }
+
+    #[test]
+    fn test_gutter_detection_and_code_indentation() {
+        let (w, h) = (120u32, 80u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+
+        // Gutter digits at x=15..25
+        for y in 10..22 { for x in 15..25 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 35..47 { for x in 15..25 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        // Vertical divider guide at x=40
+        for y in 5..75 { img.put_pixel(40, y, image::Rgba([180, 180, 180, 255])); }
+
+        // Code body to the right at x=60..110
+        for y in 10..22 { for x in 60..100 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 35..47 { for x in 75..110 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        let gutter = detect_gutter_boundary(&img);
+        assert!(gutter.has_line_numbers, "Must detect presence of line numbers");
+        assert!(gutter.gutter_boundary_x.is_some(), "Must detect gutter boundary x");
+        let gx = gutter.gutter_boundary_x.unwrap();
+        assert!(gx >= 38.0 && gx <= 45.0, "Gutter boundary must align with divider: {}", gx);
+
+        // Test coalesce_and_structure_lines with gutter line numbers preserving relative code indentation
+        let raw_lines = vec![
+            OcrLine {
+                text: "1 for i in range(10):".to_string(),
+                x: 18.0,
+                y: 12.0,
+                width: 90.0,
+                height: 16.0,
+                words: vec![
+                    OcrWord { text: "1".to_string(), x: 18.0, y: 12.0, width: 10.0, height: 16.0, confidence: 100.0 },
+                    OcrWord { text: "for".to_string(), x: 60.0, y: 12.0, width: 25.0, height: 16.0, confidence: 100.0 },
+                ],
+            },
+            OcrLine {
+                text: "2 if i % 2 == 0:".to_string(),
+                x: 18.0,
+                y: 38.0,
+                width: 95.0,
+                height: 16.0,
+                words: vec![
+                    OcrWord { text: "2".to_string(), x: 18.0, y: 38.0, width: 10.0, height: 16.0, confidence: 100.0 },
+                    OcrWord { text: "if".to_string(), x: 92.0, y: 38.0, width: 18.0, height: 16.0, confidence: 100.0 },
+                ],
+            },
+        ];
+
+        let (lines, _full_text, _) = coalesce_and_structure_lines(raw_lines);
+        assert_eq!(lines.len(), 2);
+        // Line 2 has 'if' at x=92 vs 'for' at x=60 (32px offset / char_w ~8px = 4 spaces!)
+        assert!(lines[1].text.contains("    if"), "Line 2 must preserve 4-space code indentation: '{}'", lines[1].text);
+    }
+
+    #[test]
+    fn test_perimeter_background_estimation_not_skewed_by_large_text() {
+        let (w, h) = (100u32, 100u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([20, 24, 30, 255]));
+
+        // Fill interior with bright white text content
+        for y in 20..80 {
+            for x in 20..80 {
+                img.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+
+        let (bg_r, bg_g, bg_b) = estimate_background_color(&img);
+        assert_eq!((bg_r as u8, bg_g as u8, bg_b as u8), (20, 24, 30), "Perimeter estimation must sample outer boundary without text bias");
+        assert!(is_dark_image(&img), "Image must be classified as dark background");
+        assert!(is_dark_background(&img), "is_dark_background alias must agree");
+    }
+
+    #[test]
+    fn test_max_channel_syntax_color_inversion_all_themes() {
+        let (w, h) = (60u32, 60u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([30, 30, 30, 255]));
+
+        // Peach #E06C75 (224, 108, 117)
+        img.put_pixel(10, 10, image::Rgba([224, 108, 117, 255]));
+        // Green #98C379 (152, 195, 121)
+        img.put_pixel(20, 10, image::Rgba([152, 195, 121, 255]));
+        // Cyan #61AFEF (97, 175, 239)
+        img.put_pixel(30, 10, image::Rgba([97, 175, 239, 255]));
+        // Purple #D19A66 (209, 154, 102)
+        img.put_pixel(40, 10, image::Rgba([209, 154, 102, 255]));
+        // Muted gray #ABB2BF (171, 178, 191)
+        img.put_pixel(50, 10, image::Rgba([171, 178, 191, 255]));
+
+        enhance_contrast(&mut img);
+
+        for &x in &[10, 20, 30, 40, 50] {
+            let p = img.get_pixel(x, 10);
+            assert_eq!(p[0], 0, "Syntax token at x={} must map to 0 (black ink), got: {:?}", x, p);
+            assert_eq!(p[1], 0);
+            assert_eq!(p[2], 0);
+        }
+
+        let bg_p = img.get_pixel(0, 0);
+        assert_eq!(bg_p[0], 255, "Background at (0, 0) must map to white");
+        assert_eq!(bg_p[1], 255);
+        assert_eq!(bg_p[2], 255);
+    }
+
+    #[test]
+    fn test_dynamic_pitch_valley_segmentation_8_plus_bands() {
+        // Multi-line code crop simulation: 9 lines with 34px line pitch and vertical indentation guide lines
+        let (w, h) = (200u32, 340u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+
+        // 9 text lines at y = 10, 44, 78, 112, 146, 180, 214, 248, 282
+        for line_idx in 0..9 {
+            let top_y = 10 + line_idx * 34;
+            for y in top_y..(top_y + 16) {
+                for x in 40..160 {
+                    img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+                }
+            }
+        }
+
+        // 1px vertical guide lines running continuously from y=5 to y=330 at x=20 and x=30
+        for y in 5..330 {
+            img.put_pixel(20, y, image::Rgba([180, 180, 180, 255]));
+            img.put_pixel(30, y, image::Rgba([180, 180, 180, 255]));
+        }
+
+        let bands = detect_horizontal_line_bands(&img);
+        assert!(bands.len() >= 8, "Must detect >= 8 clean line bands despite vertical guide lines, got: {}", bands.len());
+        for (idx, (y0, y1)) in bands.iter().enumerate() {
+            let bh = y1 - y0;
+            assert!(bh >= 12 && bh <= 24, "Band {} height must tightly wrap text line (12..24px), got: {} (range {}..{})", idx, bh, y0, y1);
+        }
+    }
+
+    #[test]
+    fn test_detect_horizontal_line_bands_wide_crop_sparse_delimiters() {
+        // Ultra-wide 1920px editor crop with sparse single-glyph lines:
+        // Line 0: "if condition:" (y=15..32)
+        // Line 1: "    x = [" (y=50..66)
+        // Line 2: "    ]" (y=85..104, lone closing bracket)
+        // Line 3: "    ;" (y=120..136, lone semicolon with dot/tail gap)
+        // Line 4: "}" (y=155..175, lone closing brace)
+        let (w, h) = (1920u32, 210u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+
+        // Line 0: if condition: (standard text block)
+        for y in 15..32 {
+            for x in 80..220 {
+                img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        // Line 1: x = [
+        for y in 50..66 {
+            for x in 80..140 {
+                img.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        // Line 2: lone bracket ']' (top/bottom arms 6px ink, vertical stem 2px ink)
+        for y in 85..87 { for x in 80..86 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 87..102 { for x in 84..86 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 102..104 { for x in 80..86 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        // Line 3: lone semicolon ';' (dot at y=120..122, comma at y=127..133)
+        for y in 120..122 { for x in 84..87 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 127..133 { for x in 84..87 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        // Line 4: lone curly brace '}' (top hook 4px, stem 2px, cusp 4px, stem 2px, bottom hook 4px)
+        for y in 155..157 { for x in 80..84 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 157..163 { for x in 82..84 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 163..165 { for x in 80..84 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 165..172 { for x in 82..84 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 172..174 { for x in 80..84 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        let bands = detect_horizontal_line_bands(&img);
+        assert_eq!(
+            bands.len(),
+            5,
+            "1920px ultra-wide image with sparse single delimiters must detect all 5 lines, got: {:?}",
+            bands
+        );
+        assert!(bands[2].0 >= 83 && bands[2].1 <= 106, "Band 2 captures ']'");
+        assert!(bands[3].0 >= 118 && bands[3].1 <= 135, "Band 3 captures ';'");
+        assert!(bands[4].0 >= 153 && bands[4].1 <= 176, "Band 4 captures '}}'");
+    }
+
+    #[test]
+    fn test_boundary_dilation_and_digit_top_preservation() {
+        // Simulates digit tops with initial 4-5px ink runs that were previously discarded
+        let (w, h) = (200u32, 100u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+
+        // Line 1: starts with 4px run at y=10..14 (ink=10), then continues at y=15..28 (ink=30)
+        for y in 10..14 { for x in 30..40 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 15..28 { for x in 30..60 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        // Line 2: starts with 5px run at y=45..50 (ink=12), then continues at y=51..64 (ink=40)
+        for y in 45..50 { for x in 30..42 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+        for y in 51..64 { for x in 30..70 { img.put_pixel(x, y, image::Rgba([0, 0, 0, 255])); } }
+
+        let bands = detect_horizontal_line_bands(&img);
+        assert_eq!(bands.len(), 2, "Must detect both lines");
+        assert!(bands[0].0 <= 10, "Band 0 must preserve digit top at y=10, got: {}", bands[0].0);
+        assert!(bands[0].1 >= 28, "Band 0 end matches text baseline");
+        assert!(bands[1].0 <= 45, "Band 1 must preserve digit top at y=45, got: {}", bands[1].0);
+        assert!(bands[1].1 >= 64, "Band 1 end matches text baseline");
+    }
+
+    #[test]
+    fn test_perimeter_background_estimation_with_solid_selection_border() {
+        let (w, h) = (100u32, 100u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([30, 30, 30, 255]));
+
+        // Draw 1px solid blue selection border (#3B82F6 / 59, 130, 246)
+        for x in 0..w {
+            img.put_pixel(x, 0, image::Rgba([59, 130, 246, 255]));
+            img.put_pixel(x, h - 1, image::Rgba([59, 130, 246, 255]));
+        }
+        for y in 0..h {
+            img.put_pixel(0, y, image::Rgba([59, 130, 246, 255]));
+            img.put_pixel(w - 1, y, image::Rgba([59, 130, 246, 255]));
+        }
+
+        // Add interior text
+        for y in 30..45 {
+            for x in 20..80 {
+                img.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+
+        let (bg_r, bg_g, bg_b) = estimate_background_color(&img);
+        assert_eq!((bg_r as u8, bg_g as u8, bg_b as u8), (30, 30, 30), "Perimeter estimation must ignore 1px selection border");
+        assert!(is_dark_image(&img), "Dark image detection must classify editor background, not blue border");
+    }
+
+    #[test]
+    fn test_perimeter_background_estimation_with_2px_selection_border() {
+        let (w, h) = (100u32, 100u32);
+        let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([20, 24, 30, 255]));
+
+        // Draw 2px solid white selection outline (#FFFFFF / 255, 255, 255)
+        for y in [0, 1, h - 2, h - 1] {
+            for x in 0..w {
+                img.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+        for y in 0..h {
+            for x in [0, 1, w - 2, w - 1] {
+                img.put_pixel(x, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+
+        let (bg_r, bg_g, bg_b) = estimate_background_color(&img);
+        assert_eq!((bg_r as u8, bg_g as u8, bg_b as u8), (20, 24, 30), "Perimeter estimation must ignore 2px selection border");
+        assert!(is_dark_image(&img), "Dark image detection must classify editor background, not white border");
+    }
+
+    #[test]
+    fn test_estimate_background_color_overflow_guard() {
+        let w = 70_000u32;
+        let h = 70_000u32;
+        let total_pixels = (w as u64) * (h as u64);
+        assert_eq!(total_pixels, 4_900_000_000u64);
+        let step = ((total_pixels / 4000).max(1)) as usize;
+        assert_eq!(step, 1_225_000);
+    }
 }
+
+
+

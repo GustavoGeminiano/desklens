@@ -1,125 +1,134 @@
 # DeskLens Test Infrastructure (`TEST_INFRA.md`)
 
-This document outlines the testing architecture, methodology, harness design, and execution guidelines for DeskLens.
+This document outlines the testing architecture, methodology, dataset fixtures, and execution guidelines for DeskLens, specifically focusing on the Code Token & Word OCR Detection pipeline and the interactive overlay.
 
 ---
 
 ## 1. Test Architecture Overview
 
-DeskLens employs a lightweight, ultra-fast test infrastructure powered by the Node.js native test runner (`node:test` + `node:assert/strict`) and Rust's native `cargo test` framework.
+DeskLens employs a lightweight, high-performance dual-track test infrastructure combining Rust native integration testing (`cargo test`) with Node.js native test runner (`node:test` + `node:assert/strict`).
 
 ### Key Characteristics:
-- **Zero Third-Party Test Dependencies**: Runs directly on Node.js 18+ (tested on Node v24.19.0).
-- **Sub-Second Execution**: The entire test suite of 93 tests executes in ~1.1 seconds.
-- **Hermetic Isolation**: Tests run in self-contained VM contexts (`node:vm`) with simulated DOM and mocked Tauri IPC channels, avoiding reliance on physical display servers or WebView2 instances.
-- **Multi-Tiered Coverage**: Follows the 4-tier testing hierarchy from unit boundaries up to real-world visual artifacts.
+- **Dual-Track Verification**:
+  1. **Backend OCR Engine & Preprocessing**: Native Rust integration tests (`src-tauri/tests/`) exercising image contrast inversion, vertical indentation guide line suppression, horizontal band segmentation, token splitting, and native WinRT/Tesseract OCR pipelines.
+  2. **Frontend Selection & Overlay Interaction**: Hermetic Node.js test suites (`tests/`) testing DOM coordinate scaling, interactive pill highlights, multi-line indentation preservation, and clipboard copying in isolated VM contexts.
+- **Empirical Ground-Truth Dataset Fixtures**:
+  - Embedded real-world screenshot crops extracted directly from user bug reports (`tests/fixtures/real_editor_asimov_crop.png`, `tests/fixtures/real_editor_gutter_crop.png`, `tests/fixtures/real_editor_baseline_crop.png`).
+  - Realistic multi-line editor fixtures with 1px vertical guide lines for dark and light themes (`tests/fixtures/vscode_dark_real.png`, `tests/fixtures/vscode_light_real.png`).
+- **Zero Third-Party Test Runners**: Uses Rust standard test harness and Node.js native test runner (`npm test`) without heavy external dependencies.
+- **Strict 4-Tier Testing Methodology**: Structures test cases systematically from unit primitives up to empirical real-world screenshot validations.
 
 ---
 
-## 2. Test Suites Directory (`tests/`)
+## 2. Test Suites Directory Map
 
-| File | Category | Tests | Description |
-|---|---|---|---|
-| `tests/translation_e2e.test.mjs` | E2E & Translation | 44 | Comprehensive 4-tier test suite covering paragraph grouping, contextual translation, detected language extraction, language selector flow, unified overlays, and Image 2 verbatim validation. |
-| `tests/overlay.test.mjs` | Frontend UI | 7 | Base overlay rendering, coordinate mapping, dynamic font fitting, and click-to-copy interactions. |
-| `tests/language_selection.test.mjs` | Frontend UX | 5 | Language selector DOM presence, default options, persistence in `localStorage`, and IPC argument dispatch. |
-| `tests/code_selection.test.mjs` | Code OCR | 13 | Interactive code pills, multi-line selection, proportional font snapping, and indentation preservation. |
-| `tests/adversarial_highlights_stress.test.mjs` | OCR Robustness | 13 | OCR noise filtering, scanner fold artifacts, dust tolerance, and coordinate boundary stress. |
-| `tests/adversarial_overlay.test.mjs` | Security & Stress | 10 | Malformed boxes, XSS/HTML injection resilience, extreme dimensions, and lifecycle element cleanup. |
-| `tests/challenger_m1_frontend.test.mjs` | Verification | 1 | Aspect-ratio filtering evaluation on single-character glyphs ('I', '1', '!'). |
-| **Total** | | **93** | **100% Pass** |
+| Suite File | Track | Tests | Category | Description |
+|---|---|---|---|---|
+| `src-tauri/tests/code_benchmark_e2e_tests.rs` | Rust (Backend) | 44 | Benchmark & E2E | Comprehensive 4-Tier test suite covering code keywords, operators, delimiters, vertical guide suppression, dynamic pitch, and real Asimov screenshot benchmarks (TC-REAL-1 to TC-BOX-7). |
+| `src-tauri/tests/code_ocr_tests.rs` | Rust (Backend) | 25 | Regression | Native OCR pipeline regression tests on synthetic loop/dark/light code benchmarks. |
+| `src-tauri/tests/adversarial_tests.rs` | Rust (Backend) | 16 | Stress | TSV fuzzing, aspect ratio bounds, and NaN coordinate resilience. |
+| `src-tauri/tests/ocr_newspaper_tests.rs` | Rust (Backend) | 12 | Layout | Multi-column layout, margin rejection, and headline separation. |
+| `tests/code_selection.test.mjs` | Node.js (Frontend) | 13 | UI/UX | Interactive pill highlight positioning, multi-line drag selection, proportional font snapping, and hanging indent preservation. |
+| `tests/translation_e2e.test.mjs` | Node.js (Frontend) | 44 | E2E & Translation | Paragraph clustering, contextual machine translation, detected language extraction, and unified translation overlays. |
+| `tests/overlay.test.mjs` | Node.js (Frontend) | 7 | Frontend UI | Base overlay coordinate mapping and dynamic typography scaling. |
+| `tests/language_selection.test.mjs` | Node.js (Frontend) | 5 | Frontend UX | Source/target language dropdowns and localStorage persistence. |
+| `tests/adversarial_highlights_stress.test.mjs` | Node.js (Frontend) | 14 | Stress | Sub-3px dust filtering, margin fold tolerance, and extreme dimensions. |
+| `tests/adversarial_overlay.test.mjs` | Node.js (Frontend) | 10 | Security | Malformed bounding boxes, XSS injection immunity, and DOM element cleanup. |
 
 ---
 
-## 3. 4-Tier Test Methodology
+## 3. 4-Tier Test Methodology (`code_benchmark_e2e_tests.rs`)
 
-`tests/translation_e2e.test.mjs` is structured strictly according to the 4-tier testing methodology:
+The code benchmark test harness is structured strictly around 4 verification tiers:
 
-### Tier 1: Feature Coverage (>=5 tests per feature)
-- **Feature 1: Paragraph Grouping (`T1.1.1` - `T1.1.5`)**:
-  - Contiguous line clustering by vertical pitch.
-  - Mathematical union bounding box $[ \min(x), \min(y), \max(x+w)-\min(x), \max(y+h)-\min(y) ]$.
-  - Separation across vertical pitch thresholds ($> 1.5\times$).
-  - Whitespace trimming and text concatenation.
-  - Column gutter protection ($> 40\text{px}$).
-- **Feature 2: Contextual Machine Translation (`T1.2.1` - `T1.2.5`)**:
-  - Grammatical negation preservation ("não se" + "preocupe!" -> "don't worry", avoiding affirmative "worry!").
-  - Elimination of hallucinated closing clauses ("do not hesitate to contact us").
-  - Syntactic cohesion across sentence splits.
-  - Direct association of translation with paragraph union bounding box.
-  - Dual IPC contract support (legacy array `[...]` and enriched `{ boxes: [...], detected_source_lang: "..." }`).
-- **Feature 3: Detected Language Extraction (`T1.3.1` - `T1.3.5`)**:
-  - Extraction from translation provider response.
-  - Support for `sourceLang: "auto"`.
-  - Normalization of locale tags (`pt-BR` -> `pt`, `en-US` -> `en`).
-  - Fallback on missing/null detection metadata.
-  - Extraction from legacy array payloads with box metadata.
-- **Feature 4: Language Selector Flow & Smart Target Switch (`T1.4.1` - `T1.4.5`)**:
-  - Presence of `#lang-selector-group` in DOM.
-  - Smart target switch (PT source + PT target -> switches to EN).
-  - Smart target switch (EN source + EN target -> switches to PT).
-  - Persistence of user selections to `localStorage`.
-  - Dynamic translation button tooltip and title updates.
-- **Feature 5: Unified Paragraph Overlay DOM & Typography (`T1.5.1` - `T1.5.5`)**:
-  - Exactly 1 `.lens-translation-box` rendered for multi-line paragraph union.
-  - Exact coordinate matching without baseline jitter.
-  - CSS stylesheet dark background `#1a1a1a` and multi-line word wrapping.
-  - Elimination of collision displacement offset.
-  - Click-to-copy interaction copying entire paragraph to clipboard.
+### Tier 1: Feature Coverage (≥5 tests per feature: 25 tests)
+- **Feature 1: Keyword Recognition (`T1.1.1` - `T1.1.5`)**:
+  - `T1.1.1`: Python control flow keywords (`for`, `in`, `if`, `else`, `while`, `elif`).
+  - `T1.1.2`: Structural definition keywords (`def`, `class`, `return`, `async`, `await`).
+  - `T1.1.3`: Namespace and module keywords (`import`, `from`, `with`, `try`, `except`).
+  - `T1.1.4`: Cross-language declaration keywords (`let`, `var`, `val`, `fn`, `struct`, `enum`, `impl`).
+  - `T1.1.5`: Coloned & short keywords (`if:`, `else:`, `elif:`, `for:`, `while:`, `is`, `in`).
+- **Feature 2: Operator Recovery & Integrity (`T1.2.1` - `T1.2.5`)**:
+  - `T1.2.1`: Equality and comparison operators (`==`, `!=`, `<=`, `>=`, `<`, `>`, `===`, `!==`).
+  - `T1.2.2`: Arithmetic and modulo operators (`%`, `+`, `-`, `*`, `/`, `//`, `**`).
+  - `T1.2.3`: Assignment and compound operators (`=`, `+=`, `-=`, `*=`, `/=`, `%=`).
+  - `T1.2.4`: Logical and bitwise operators (`&&`, `||`, `!`, `&`, `|`, `^`, `~`).
+  - `T1.2.5`: Structural and type operators (`->`, `=>`, `::`, `..`, `.`).
+- **Feature 3: Delimiters and Syntax Punctuation (`T1.3.1` - `T1.3.5`)**:
+  - `T1.3.1`: Statement terminators and colons (`:`, `;`).
+  - `T1.3.2`: Enclosure delimiters (`(`, `)`, `[`, `]`, `{`, `}`).
+  - `T1.3.3`: Separators (`,`, `.`, `;`, `:`).
+  - `T1.3.4`: String quote normalization (typographic double/single quotes normalized to ASCII `"` and `'`).
+  - `T1.3.5`: Fullwidth East Asian syntax normalization (`（`, `）`, `：`, `＝`, `［`, `］`, `≤`, `≥`, `≠`).
+- **Feature 4: String Literals & Code Prefixes (`T1.4.1` - `T1.4.5`)**:
+  - `T1.4.1`: Formatted string prefix in function call: `print(f"%i is even")` segmenting into `print(f` and `"%i`.
+  - `T1.4.2`: Odd string literal in loop: `"%i is odd"`.
+  - `T1.4.3`: Standalone string literals: `"metric_result"`.
+  - `T1.4.4`: Dictionary key-value strings: `{'result'`.
+  - `T1.4.5`: Elimination of invisible zero-width characters (`\u{200B}`, `\u{FEFF}`) from string tokens.
+- **Feature 5: Line Number & Gutter Separation (`T1.5.1` - `T1.5.5`)**:
+  - `T1.5.1`: Gutter digits `1`..`5` parsed without merging into code tokens.
+  - `T1.5.2`: Gutter digits `7`..`10` separated from terminal console output.
+  - `T1.5.3`: Multi-digit line number `10` preserved without splitting into `1` and `0`.
+  - `T1.5.4`: Horizontal gutter gap preserves relative code indentation.
+  - `T1.5.5`: Tight crop without gutter numbers produces valid lines and words.
 
-### Tier 2: Boundary & Corner Cases (9 tests)
-- `T2.1`: Single-line box (isolated label or button) remains single-line with `is_paragraph: false`.
-- `T2.2`: Empty, null, and whitespace-only lines safely filtered without creating zero-area overlays.
-- `T2.3`: Multi-line paragraph of 5 lines correctly unified into single bounding box.
-- `T2.4`: Hyphenated words across line breaks (`"desenvolvi-"` + `"mento"` de-hyphenated into `"desenvolvimento"`).
-- `T2.5`: Terminal punctuation (`.`, `!`, `?`) followed by pitch jump establishes paragraph boundary.
-- `T2.6`: Ultra-wide ribbon banner ($1600 \times 14\text{px}$) font size safely bounded.
-- `T2.7`: Ultra-narrow tall column ($16 \times 350\text{px}$) font size safely bounded.
-- `T2.8`: Microscopic 1px and 0px dust boxes discarded before translation dispatch.
-- `T2.9`: Fallback timeout resilience: simulated backend network error returns original text cleanly.
+### Tier 2: Boundary & Corner Cases (8 tests)
+- `T2.1` (`TC-GUIDE-2`): **Vertical Guide Lines Resilience**: 1px grey vertical lines descending through indentation columns do not bridge rows or collapse image into a single mega-band.
+- `T2.2` (`TC-SPLIT-3`): **Dynamic Pitch Adaptation**: Inter-line pitch across 30..50px dynamically segmented at genuine ink valleys without slicing glyphs in half.
+- `T2.3`: **Dark vs Light Editor Themes**: Accurate contrast inversion on dark editor background (`#1e1e1e`) and light background (`#ffffff`).
+- `T2.4` (`TC-SHORT-5`): **Standalone Short Lines**: Isolated short lines like `else:` detected with valid non-zero bounding box.
+- `T2.5` (`TC-ZERO-6`): **Monospace Slashed-Zero Terminal Output**: `0 is even` recognized with digit `0`, word `is`, and word `even`.
+- `T2.6`: **Aspect Ratio on Narrow Tokens**: Single-character and narrow tokens (`i`, `1`, `!`, `%`, `if`) with aspect ratio > 2.8 preserved.
+- `T2.7`: **Glued Operator Expression Segmentation**: Chains like `2==0:` segment into `2`, `==`, `0`, `:` without coordinate drift or overlapping bounds.
+- `T2.8` (`TC-BOX-7`): **Bounding Box Non-Overlap Invariants**: For all tokens, $w > 0$, $h > 0$, $x \ge 0$, $y \ge 0$, and within each line $x_i + w_i \le x_{i+1}$.
 
 ### Tier 3: Cross-Feature Combinations (5 tests)
-- `T3.1`: Multi-column layout separation: 2 parallel columns at overlapping Y ranges do not merge lines across columns.
-- `T3.2`: Code vs natural text preservation: indented code blocks retain structure while prose is paragraph-grouped.
-- `T3.3`: Source == Target Language Handling: Portuguese text with Portuguese target redirects to English.
-- `T3.4`: End-to-End Pipeline: OCR lines -> Grouping -> Contextual Translation -> Unified DOM Overlay.
-- `T3.5`: Mixed content: multi-line paragraph alongside isolated buttons/actions.
+- `T3.1`: **Python Conditional Loop Construct**: Simultaneous keywords (`for`, `in`, `if`, `else:`), operators (`%`, `==`), string calls (`print(f`), and numbers.
+- `T3.2`: **Typed Function with Operators**: `def calculate(limit: int = 10) -> bool:` with return type arrow and colon.
+- `T3.3`: **Nested Indentation Snapping**: 0-space `for`, 4-space `if`, 8-space `print` indentation hierarchy preserved.
+- `T3.4`: **Mixed Code and Terminal Output**: Code buffer preceding an inter-block gap followed by console output lines.
+- `T3.5`: **Dual-Engine TSV Coordinate Scaling**: Tesseract/WinRT TSV parsing with 2.0x DPI upscaling and coordinate recovery.
 
-### Tier 4: Real-World Scenarios (5 tests)
-- `T4.1`: **Image 2 Verbatim Portuguese Paragraph Real-World Verification**:
-  - Verbatim text from user screenshot (Image 2):
-    - Line 0: `"Lembrando que, se você ficou com alguma dúvida ou percebeu que algum assunto não foi totalmente explicado, não se"`
-    - Line 1: `"preocupe! Sinta-se à vontade para conversar com seu professor e esclarecer tudo que for necessário. Fazer perguntas"`
-    - Line 2: `"faz parte do processo de aprendizagem."`
-  - Verifies exact union bounding box $[21, 14, 969, 69]$.
-  - Verifies 268-character concatenated paragraph text.
-  - Verifies English translation preserves negation (`"don't worry"` / `"do not worry"`), forbids isolated affirmative `"worry!"`, forbids hallucinated `"do not hesitate to contact us"`, and links `"Asking questions is part of the learning process"`.
-  - Verifies exactly 1 overlay card rendered in DOM and copies all 268 characters (translated) on click.
-- `T4.2`: Technical documentation with section header, body paragraph, and code sample.
-- `T4.3`: Chat/messaging UI scenario with alternating user bubbles.
-- `T4.4`: Academic two-column article excerpt (Abstract vs Introduction).
-- `T4.5`: Full user workflow simulation: crop selection -> detected PT -> smart target EN -> translate -> unified overlay -> clipboard copy.
+### Tier 4: Real-World Application Scenarios (6 tests)
+- `T4.1` (**TC-REAL-1**): **Real Asimov Loop Graphic Verbatim Crop** (`tests/fixtures/real_editor_asimov_crop.png` from `media_1793996902023_9c063b4f.png`):
+  - Line 1: `for`, `i`, `in`, `range(10):`
+  - Line 2: `if`, `i`, `%`, `2`, `==`, `0:` (Zero dropped tokens)
+  - Line 3: `print(f`, `"%i`, `is`, `even")`
+  - Line 4: `else:`
+  - Line 5: `print(f`, `"%i`, `is`, `odd")`
+  - Line 7: `0`, `is`, `even`
+  - Line 8: `1`, `is`, `odd`
+  - Line 9: `2`, `is`, `even`
+  - Line 10: `3`, `is`, `odd`
+- `T4.2` (**TC-GUTTER-2**): **Real Asimov Gutter Crop** (`tests/fixtures/real_editor_gutter_crop.png` from `media_1793996685095_927ef312.png`):
+  - Validates gutter line numbers `1`..`5` and `7`..`10` alongside code lines.
+- `T4.3` (**TC-BASELINE-3**): **Nov 4 Baseline Crop** (`tests/fixtures/real_editor_baseline_crop.png` from `media_1793829362348_f78149df.png`):
+  - Validates detection across tight baseline editor crop.
+- `T4.4` (**TC-VSCODE-DARK**): **VS Code Dark Theme Snippet** (`tests/fixtures/vscode_dark_real.png`):
+  - Validates dark theme with active 1px vertical guide lines at columns 4 and 8.
+- `T4.5` (**TC-VSCODE-LIGHT**): **VS Code Light Theme Snippet** (`tests/fixtures/vscode_light_real.png`):
+  - Validates light theme with active 1px vertical guide lines.
+- `T4.6` (**TC-BOX-7**): **Bounding Box Non-Overlap and Tight Wrapping**:
+  - Validates that bounding boxes across real screenshot tokens are non-zero, non-inverted, and non-overlapping.
 
 ---
 
 ## 4. Execution Guidelines
 
-### Running the Full Test Suite
+### Running Backend Code Benchmark E2E Tests
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --test code_benchmark_e2e_tests
+```
+
+### Running All Backend Rust Tests
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+### Running Frontend Tests
 ```powershell
 npm test
-# OR directly via node:
+# OR directly:
 node --test tests/*.test.mjs
-```
-
-### Running Specific Test Suites
-```powershell
-node --test tests/translation_e2e.test.mjs
-node --test tests/overlay.test.mjs
-node --test tests/language_selection.test.mjs
-```
-
-### Backend Rust Verification
-```powershell
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
 ```
