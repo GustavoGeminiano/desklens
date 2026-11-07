@@ -44,7 +44,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libpipewire-0.3-dev libspa-0.2-dev tesseract-ocr tesseract-ocr-eng tesseract-ocr-por
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libpipewire-0.3-dev libspa-0.2-dev libgbm-dev tesseract-ocr tesseract-ocr-eng tesseract-ocr-por
       - name: Install benchmark dependencies
         run: python -m pip install -r scripts/ocr_benchmark/requirements.txt
       - name: Verify and prepare OCR models
