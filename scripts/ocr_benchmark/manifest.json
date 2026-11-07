@@ -1,0 +1,1423 @@
+{
+  "schema_version": 1,
+  "annotation_policy": "Whitespace-delimited word ink extents, manually inspected. Literal text, including visibly unmatched punctuation; no syntax repair. Crop coordinates are half-open source pixel bounds. Existing real screenshot includes prior OCR blue highlight contamination.",
+  "synthetic": {
+    "font": "scripts/ocr_benchmark/assets/DejaVuSansMono.ttf"
+  },
+  "cases": [
+    {
+      "id": "asimov_manual_overlay",
+      "image": "tests/fixtures/real_editor_asimov_crop.png",
+      "crop": [
+        50,
+        15,
+        410,
+        299
+      ],
+      "provenance": "Existing screenshot crop, manually transcribed and word ink boxes manually annotated; blue OCR highlights already present in source; gutters and toolbar excluded. Not clean held-out acquisition.",
+      "truth": {
+        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+        "lines": [
+          {
+            "text": "for i in range(10):",
+            "words": [
+              {
+                "text": "for",
+                "x": 6,
+                "y": 3,
+                "width": 36,
+                "height": 20
+              },
+              {
+                "text": "i",
+                "x": 59,
+                "y": 3,
+                "width": 10,
+                "height": 20
+              },
+              {
+                "text": "in",
+                "x": 86,
+                "y": 3,
+                "width": 23,
+                "height": 20
+              },
+              {
+                "text": "range(10):",
+                "x": 126,
+                "y": 3,
+                "width": 119,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "    if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 45,
+                "y": 35,
+                "width": 23,
+                "height": 20
+              },
+              {
+                "text": "i",
+                "x": 85,
+                "y": 35,
+                "width": 10,
+                "height": 20
+              },
+              {
+                "text": "%",
+                "x": 110,
+                "y": 35,
+                "width": 14,
+                "height": 20
+              },
+              {
+                "text": "2",
+                "x": 136,
+                "y": 35,
+                "width": 11,
+                "height": 20
+              },
+              {
+                "text": "==",
+                "x": 162,
+                "y": 35,
+                "width": 25,
+                "height": 20
+              },
+              {
+                "text": "0:",
+                "x": 202,
+                "y": 35,
+                "width": 23,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 85,
+                "y": 66,
+                "width": 143,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 243,
+                "y": 66,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even\")",
+                "x": 281,
+                "y": 66,
+                "width": 74,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "    else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 45,
+                "y": 98,
+                "width": 61,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 85,
+                "y": 129,
+                "width": 143,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 243,
+                "y": 129,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd\")",
+                "x": 281,
+                "y": 129,
+                "width": 61,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "0 is even",
+            "words": [
+              {
+                "text": "0",
+                "x": 6,
+                "y": 170,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 33,
+                "y": 170,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even",
+                "x": 72,
+                "y": 170,
+                "width": 51,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "1 is odd",
+            "words": [
+              {
+                "text": "1",
+                "x": 6,
+                "y": 201,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 33,
+                "y": 201,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd",
+                "x": 72,
+                "y": 201,
+                "width": 38,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "2 is even",
+            "words": [
+              {
+                "text": "2",
+                "x": 6,
+                "y": 232,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 33,
+                "y": 232,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even",
+                "x": 72,
+                "y": 232,
+                "width": 51,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "3 is odd",
+            "words": [
+              {
+                "text": "3",
+                "x": 6,
+                "y": 263,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 33,
+                "y": 263,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd",
+                "x": 72,
+                "y": 263,
+                "width": 38,
+                "height": 20
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "baseline_manual_overlay",
+      "image": "tests/fixtures/real_editor_baseline_crop.png",
+      "crop": [
+        58,
+        27,
+        418,
+        183
+      ],
+      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data.",
+      "truth": {
+        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")",
+        "lines": [
+          {
+            "text": "for i in range(10):",
+            "words": [
+              {
+                "text": "for",
+                "x": 5,
+                "y": 5,
+                "width": 36,
+                "height": 20
+              },
+              {
+                "text": "i",
+                "x": 58,
+                "y": 5,
+                "width": 10,
+                "height": 20
+              },
+              {
+                "text": "in",
+                "x": 85,
+                "y": 5,
+                "width": 23,
+                "height": 20
+              },
+              {
+                "text": "range(10):",
+                "x": 125,
+                "y": 5,
+                "width": 120,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "    if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 45,
+                "y": 36,
+                "width": 23,
+                "height": 20
+              },
+              {
+                "text": "i",
+                "x": 85,
+                "y": 36,
+                "width": 10,
+                "height": 20
+              },
+              {
+                "text": "%",
+                "x": 110,
+                "y": 36,
+                "width": 14,
+                "height": 20
+              },
+              {
+                "text": "2",
+                "x": 136,
+                "y": 36,
+                "width": 11,
+                "height": 20
+              },
+              {
+                "text": "==",
+                "x": 162,
+                "y": 36,
+                "width": 25,
+                "height": 20
+              },
+              {
+                "text": "0:",
+                "x": 202,
+                "y": 36,
+                "width": 23,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 84,
+                "y": 68,
+                "width": 143,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 242,
+                "y": 68,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even\")",
+                "x": 281,
+                "y": 68,
+                "width": 74,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "    else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 45,
+                "y": 99,
+                "width": 61,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 84,
+                "y": 131,
+                "width": 143,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 242,
+                "y": 131,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd\")",
+                "x": 281,
+                "y": 131,
+                "width": 61,
+                "height": 20
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "gutter_manual_overlay",
+      "image": "tests/fixtures/real_editor_gutter_crop.png",
+      "crop": [
+        75,
+        39,
+        436,
+        330
+      ],
+      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data.",
+      "truth": {
+        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+        "lines": [
+          {
+            "text": "for i in range(10):",
+            "words": [
+              {
+                "text": "for",
+                "x": 5,
+                "y": 5,
+                "width": 36,
+                "height": 20
+              },
+              {
+                "text": "i",
+                "x": 58,
+                "y": 5,
+                "width": 10,
+                "height": 20
+              },
+              {
+                "text": "in",
+                "x": 85,
+                "y": 5,
+                "width": 23,
+                "height": 20
+              },
+              {
+                "text": "range(10):",
+                "x": 125,
+                "y": 5,
+                "width": 120,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "    if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 45,
+                "y": 37,
+                "width": 23,
+                "height": 20
+              },
+              {
+                "text": "i",
+                "x": 85,
+                "y": 37,
+                "width": 10,
+                "height": 20
+              },
+              {
+                "text": "%",
+                "x": 110,
+                "y": 37,
+                "width": 14,
+                "height": 20
+              },
+              {
+                "text": "2",
+                "x": 136,
+                "y": 37,
+                "width": 11,
+                "height": 20
+              },
+              {
+                "text": "==",
+                "x": 162,
+                "y": 37,
+                "width": 25,
+                "height": 20
+              },
+              {
+                "text": "0:",
+                "x": 202,
+                "y": 37,
+                "width": 23,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 85,
+                "y": 68,
+                "width": 143,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 243,
+                "y": 68,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even\")",
+                "x": 282,
+                "y": 68,
+                "width": 74,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "    else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 45,
+                "y": 100,
+                "width": 61,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 85,
+                "y": 131,
+                "width": 143,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 243,
+                "y": 131,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd\")",
+                "x": 282,
+                "y": 131,
+                "width": 61,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "0 is even",
+            "words": [
+              {
+                "text": "0",
+                "x": 5,
+                "y": 172,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 32,
+                "y": 172,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even",
+                "x": 71,
+                "y": 172,
+                "width": 51,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "1 is odd",
+            "words": [
+              {
+                "text": "1",
+                "x": 5,
+                "y": 203,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 32,
+                "y": 203,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd",
+                "x": 71,
+                "y": 203,
+                "width": 38,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "2 is even",
+            "words": [
+              {
+                "text": "2",
+                "x": 5,
+                "y": 234,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 32,
+                "y": 234,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "even",
+                "x": 71,
+                "y": 234,
+                "width": 51,
+                "height": 20
+              }
+            ]
+          },
+          {
+            "text": "3 is odd",
+            "words": [
+              {
+                "text": "3",
+                "x": 5,
+                "y": 265,
+                "width": 12,
+                "height": 20
+              },
+              {
+                "text": "is",
+                "x": 32,
+                "y": 265,
+                "width": 24,
+                "height": 20
+              },
+              {
+                "text": "odd",
+                "x": 71,
+                "y": 265,
+                "width": 38,
+                "height": 20
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "existing_vscode_dark",
+      "image": "tests/fixtures/vscode_dark_real.png",
+      "crop": [
+        44,
+        21,
+        405,
+        305
+      ],
+      "provenance": "Existing editor-style fixture; provenance of acquisition unverified, not counted as an independently captured real screenshot. Manually transcribed with approximate word ink bounds; gutter excluded.",
+      "truth": {
+        "full_text": "def check_numbers(limit: int):\n    for i in range(limit):\n        if i % 2 == 0:\n            print(f\"%i is even\")\n        else:\n            print(f\"%i is odd\")\n        if i != 0:\n            pass",
+        "lines": [
+          {
+            "text": "def check_numbers(limit: int):",
+            "words": [
+              {
+                "text": "def",
+                "x": 5,
+                "y": 5,
+                "width": 32,
+                "height": 19
+              },
+              {
+                "text": "check_numbers(limit:",
+                "x": 48,
+                "y": 5,
+                "width": 215,
+                "height": 19
+              },
+              {
+                "text": "int):",
+                "x": 275,
+                "y": 5,
+                "width": 54,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "    for i in range(limit):",
+            "words": [
+              {
+                "text": "for",
+                "x": 49,
+                "y": 41,
+                "width": 32,
+                "height": 19
+              },
+              {
+                "text": "i",
+                "x": 92,
+                "y": 41,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "in",
+                "x": 114,
+                "y": 41,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "range(limit):",
+                "x": 146,
+                "y": 41,
+                "width": 141,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "        if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 92,
+                "y": 77,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "i",
+                "x": 124,
+                "y": 77,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "%",
+                "x": 146,
+                "y": 77,
+                "width": 11,
+                "height": 19
+              },
+              {
+                "text": "2",
+                "x": 167,
+                "y": 77,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "==",
+                "x": 190,
+                "y": 77,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "0:",
+                "x": 222,
+                "y": 77,
+                "width": 21,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "            print(f\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f\"%i",
+                "x": 135,
+                "y": 113,
+                "width": 108,
+                "height": 19
+              },
+              {
+                "text": "is",
+                "x": 256,
+                "y": 113,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "even\")",
+                "x": 288,
+                "y": 113,
+                "width": 65,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "        else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 92,
+                "y": 149,
+                "width": 54,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "            print(f\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f\"%i",
+                "x": 135,
+                "y": 185,
+                "width": 108,
+                "height": 19
+              },
+              {
+                "text": "is",
+                "x": 256,
+                "y": 185,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "odd\")",
+                "x": 288,
+                "y": 185,
+                "width": 54,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "        if i != 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 92,
+                "y": 221,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "i",
+                "x": 124,
+                "y": 221,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "!=",
+                "x": 146,
+                "y": 221,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "0:",
+                "x": 179,
+                "y": 221,
+                "width": 21,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "            pass",
+            "words": [
+              {
+                "text": "pass",
+                "x": 135,
+                "y": 257,
+                "width": 43,
+                "height": 19
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "existing_vscode_light",
+      "image": "tests/fixtures/vscode_light_real.png",
+      "crop": [
+        44,
+        21,
+        405,
+        305
+      ],
+      "provenance": "Existing editor-style fixture; provenance of acquisition unverified, not counted as an independently captured real screenshot. Manually transcribed with approximate word ink bounds; gutter excluded.",
+      "truth": {
+        "full_text": "def check_numbers(limit: int):\n    for i in range(limit):\n        if i % 2 == 0:\n            print(f\"%i is even\")\n        else:\n            print(f\"%i is odd\")\n        if i != 0:\n            pass",
+        "lines": [
+          {
+            "text": "def check_numbers(limit: int):",
+            "words": [
+              {
+                "text": "def",
+                "x": 5,
+                "y": 5,
+                "width": 32,
+                "height": 19
+              },
+              {
+                "text": "check_numbers(limit:",
+                "x": 48,
+                "y": 5,
+                "width": 215,
+                "height": 19
+              },
+              {
+                "text": "int):",
+                "x": 275,
+                "y": 5,
+                "width": 54,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "    for i in range(limit):",
+            "words": [
+              {
+                "text": "for",
+                "x": 49,
+                "y": 41,
+                "width": 32,
+                "height": 19
+              },
+              {
+                "text": "i",
+                "x": 92,
+                "y": 41,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "in",
+                "x": 114,
+                "y": 41,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "range(limit):",
+                "x": 146,
+                "y": 41,
+                "width": 141,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "        if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 92,
+                "y": 77,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "i",
+                "x": 124,
+                "y": 77,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "%",
+                "x": 146,
+                "y": 77,
+                "width": 11,
+                "height": 19
+              },
+              {
+                "text": "2",
+                "x": 167,
+                "y": 77,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "==",
+                "x": 190,
+                "y": 77,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "0:",
+                "x": 222,
+                "y": 77,
+                "width": 21,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "            print(f\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f\"%i",
+                "x": 135,
+                "y": 113,
+                "width": 108,
+                "height": 19
+              },
+              {
+                "text": "is",
+                "x": 256,
+                "y": 113,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "even\")",
+                "x": 288,
+                "y": 113,
+                "width": 65,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "        else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 92,
+                "y": 149,
+                "width": 54,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "            print(f\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f\"%i",
+                "x": 135,
+                "y": 185,
+                "width": 108,
+                "height": 19
+              },
+              {
+                "text": "is",
+                "x": 256,
+                "y": 185,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "odd\")",
+                "x": 288,
+                "y": 185,
+                "width": 54,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "        if i != 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 92,
+                "y": 221,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "i",
+                "x": 124,
+                "y": 221,
+                "width": 10,
+                "height": 19
+              },
+              {
+                "text": "!=",
+                "x": 146,
+                "y": 221,
+                "width": 21,
+                "height": 19
+              },
+              {
+                "text": "0:",
+                "x": 179,
+                "y": 221,
+                "width": 21,
+                "height": 19
+              }
+            ]
+          },
+          {
+            "text": "            pass",
+            "words": [
+              {
+                "text": "pass",
+                "x": 135,
+                "y": 257,
+                "width": 43,
+                "height": 19
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "user_report_2026_11_07",
+      "image": "scripts/ocr_benchmark/assets/user_report_2026_11_07.png",
+      "crop": [
+        419,
+        324,
+        960,
+        753
+      ],
+      "provenance": "Exact image attached by user on 2026-11-07, manually transcribed with approximate word ink bounds. Existing DeskLens highlights contaminate image. Shares Asimov content with three other cases; not clean held-out acquisition.",
+      "truth": {
+        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+        "lines": [
+          {
+            "text": "for i in range(10):",
+            "words": [
+              {
+                "text": "for",
+                "x": 10,
+                "y": 7,
+                "width": 54,
+                "height": 27
+              },
+              {
+                "text": "i",
+                "x": 89,
+                "y": 7,
+                "width": 15,
+                "height": 27
+              },
+              {
+                "text": "in",
+                "x": 128,
+                "y": 7,
+                "width": 35,
+                "height": 27
+              },
+              {
+                "text": "range(10):",
+                "x": 188,
+                "y": 7,
+                "width": 185,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "    if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 69,
+                "y": 55,
+                "width": 35,
+                "height": 27
+              },
+              {
+                "text": "i",
+                "x": 129,
+                "y": 55,
+                "width": 15,
+                "height": 27
+              },
+              {
+                "text": "%",
+                "x": 166,
+                "y": 55,
+                "width": 21,
+                "height": 27
+              },
+              {
+                "text": "2",
+                "x": 207,
+                "y": 55,
+                "width": 16,
+                "height": 27
+              },
+              {
+                "text": "==",
+                "x": 246,
+                "y": 55,
+                "width": 37,
+                "height": 27
+              },
+              {
+                "text": "0:",
+                "x": 306,
+                "y": 55,
+                "width": 35,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 129,
+                "y": 101,
+                "width": 211,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 366,
+                "y": 101,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "even\")",
+                "x": 425,
+                "y": 101,
+                "width": 109,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "    else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 69,
+                "y": 149,
+                "width": 90,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "        print(f(\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 129,
+                "y": 196,
+                "width": 211,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 366,
+                "y": 196,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "odd\")",
+                "x": 425,
+                "y": 196,
+                "width": 88,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "0 is even",
+            "words": [
+              {
+                "text": "0",
+                "x": 10,
+                "y": 255,
+                "width": 17,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 53,
+                "y": 255,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "even",
+                "x": 111,
+                "y": 255,
+                "width": 73,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "1 is odd",
+            "words": [
+              {
+                "text": "1",
+                "x": 10,
+                "y": 303,
+                "width": 17,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 53,
+                "y": 303,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "odd",
+                "x": 111,
+                "y": 303,
+                "width": 53,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "2 is even",
+            "words": [
+              {
+                "text": "2",
+                "x": 10,
+                "y": 350,
+                "width": 17,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 53,
+                "y": 350,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "even",
+                "x": 111,
+                "y": 350,
+                "width": 73,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "3 is odd",
+            "words": [
+              {
+                "text": "3",
+                "x": 10,
+                "y": 397,
+                "width": 17,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 53,
+                "y": 397,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "odd",
+                "x": 111,
+                "y": 397,
+                "width": 53,
+                "height": 27
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

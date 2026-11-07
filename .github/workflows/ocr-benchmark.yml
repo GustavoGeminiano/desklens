@@ -1,0 +1,74 @@
+name: OCR benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/ocr_benchmark/**'
+      - 'src-tauri/src/ocr.rs'
+      - 'src-tauri/examples/ocr_diagnostic.rs'
+      - 'tools/ocr-diagnostic/**'
+      - '.github/workflows/ocr-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential pkg-config libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libpipewire-0.3-dev libspa-0.2-dev tesseract-ocr tesseract-ocr-eng tesseract-ocr-por
+      - name: Install benchmark dependencies
+        run: python -m pip install -r scripts/ocr_benchmark/requirements.txt
+      - name: Verify and prepare OCR models
+        run: python scripts/ocr_benchmark/rapidocr_engine.py prepare --model-dir .ocr-models
+      - name: Test benchmark evaluation
+        run: python -m unittest discover -s scripts/ocr_benchmark -p "test_*.py"
+      - name: Test frontend
+        run: npm test
+      - name: Build native diagnostic
+        run: cargo build --locked --manifest-path tools/ocr-diagnostic/Cargo.toml
+      - name: Test native diagnostic
+        run: cargo test --locked --manifest-path tools/ocr-diagnostic/Cargo.toml
+      - name: Benchmark Linux
+        if: runner.os == 'Linux'
+        run: python scripts/ocr_benchmark/run.py --output benchmark-results --repeats 5 --diagnostic tools/ocr-diagnostic/target/debug/ocr_diagnostic
+      - name: Benchmark Windows
+        if: runner.os == 'Windows'
+        run: python scripts/ocr_benchmark/run.py --output benchmark-results --repeats 5 --diagnostic tools/ocr-diagnostic/target/debug/ocr_diagnostic.exe
+      - name: Test Rust
+        id: rust-tests
+        continue-on-error: true
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Upload results and visual report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-benchmark-${{ runner.os }}
+          path: benchmark-results/
+          if-no-files-found: warn
+      - name: Preserve Rust test failure status
+        if: steps.rust-tests.outcome == 'failure'
+        run: python -c "raise SystemExit('Existing Rust suite failed; see Test Rust logs and benchmark artifacts')"
