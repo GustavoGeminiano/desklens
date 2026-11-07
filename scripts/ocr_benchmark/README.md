@@ -1,5 +1,7 @@
 # OCR benchmark: Linux and Windows
 
+Start with the [final native validation and decision](experiments/10-final-validation.md).
+
 This experiment does not select or replace the desktop application's OCR engine.
 Linux uses Tesseract; Windows uses Windows.Media.Ocr. RapidOCR runs separately
 with ONNX Runtime CPU, a pinned PP-OCRv5 detector and Latin recognizer.

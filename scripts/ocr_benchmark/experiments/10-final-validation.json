@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-07",
+  "source_commit": "1a37de75127a8b30e949c7bb738519dc665e2eef",
+  "workflow_run": "https://github.com/GustavoGeminiano/desklens/actions/runs/42425684950",
+  "decision": "Keep current production engines: RapidOCR improves aggregate whitespace-free recognition and localization but fails literal layout criterion.",
+  "platforms": {
+    "linux": {
+      "environment": {
+        "native_environment": {
+          "OMP_THREAD_LIMIT": "1"
+        },
+        "native_timeout_seconds": 120,
+        "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+        "python": "3.12.16 (main, Oct 26 2026, 02:50:49) [GCC 13.3.0]",
+        "packages": {
+          "Pillow": "13.0.0",
+          "rapidocr": "3.10.0",
+          "onnxruntime": "1.31.1"
+        },
+        "tesseract_version": "tesseract 5.3.4\n leptonica-1.82.0\n  libgif 5.2.1 : libjpeg 8d (libjpeg-turbo 2.1.5) : libpng 1.6.43 : libtiff 4.5.1 : zlib 1.3 : libwebp 1.3.2 : libopenjp2 2.5.0\n Found AVX512BW\n Found AVX512F\n Found AVX512VNNI\n Found AVX2\n Found AVX\n Found FMA\n Found SSE4.1\n Found OpenMP 201511\n Found libarchive 3.7.2 zlib/1.3 liblzma/5.4.5 bz2lib/1.0.8 liblz4/1.9.4 libzstd/1.5.5\n Found libcurl/8.5.0 OpenSSL/3.0.13 zlib/1.3 brotli/1.1.0 zstd/1.5.5 libidn2/2.3.7 libpsl/0.21.2 (+libidn2/2.3.7) libssh/0.10.6/openssl/zlib nghttp2/1.59.0 librtmp/2.3 OpenLDAP/2.6.10",
+        "tesseract_languages": "List of available languages in \"/usr/share/tesseract-ocr/5/tessdata/\" (3):\neng\nosd\npor"
+      },
+      "checks": {
+        "frontend": {
+          "passed": 239
+        },
+        "python": {
+          "passed": 18,
+          "skipped": 0
+        },
+        "diagnostic": {
+          "passed": 20
+        },
+        "full_application_rust": {
+          "passed": 236,
+          "failed": 5,
+          "ignored": 1,
+          "failures": [
+            "test_empirical_inspect_asimov_crop_row_ink",
+            "test_t4_1_tc_real_1_asimov_loop_crop_verbatim",
+            "test_t4_6_tc_box_7_bounding_box_fidelity_and_non_overlap",
+            "test_code_ocr_loop_conditional_constructs",
+            "test_code_ocr_native_pipeline_end_to_end"
+          ]
+        },
+        "native_benchmark": {
+          "status": "passed",
+          "cases": 10,
+          "warm_repeats": 5
+        }
+      },
+      "summary": {
+        "original_raw": {
+          "weighted_cer": 0.20128022759601708,
+          "weighted_text_and_box_recall_iou50": 0.7264957264957265,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.031315240083507306,
+          "median_of_case_warm_medians_ms": 335.502536
+        },
+        "preprocessed_raw": {
+          "weighted_cer": 0.19487908961593173,
+          "weighted_text_and_box_recall_iou50": 0.7777777777777778,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.029227557411273485,
+          "median_of_case_warm_medians_ms": 871.664471
+        },
+        "current_pipeline": {
+          "weighted_cer": 0.07183499288762446,
+          "weighted_text_and_box_recall_iou50": 0.7051282051282052,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.05845511482254697,
+          "median_of_case_warm_medians_ms": 870.7960290000001
+        },
+        "rapidocr_original_raw": {
+          "weighted_cer": 0.24822190611664297,
+          "weighted_text_and_box_recall_iou50": 0.8504273504273504,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.009394572025052192,
+          "median_of_case_warm_medians_ms": 632.7078070000027
+        }
+      },
+      "models": {
+        "det": {
+          "name": "ch_PP-OCRv5_det_mobile.onnx",
+          "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
+          "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
+        },
+        "rec": {
+          "name": "latin_PP-OCRv5_rec_mobile.onnx",
+          "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+          "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx"
+        }
+      }
+    },
+    "windows": {
+      "environment": {
+        "native_environment": {
+          "OMP_THREAD_LIMIT": "1"
+        },
+        "native_timeout_seconds": 120,
+        "platform": "Windows-2025Server-10.0.26100-SP0",
+        "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+        "packages": {
+          "Pillow": "13.0.0",
+          "rapidocr": "3.10.0",
+          "onnxruntime": "1.31.1"
+        },
+        "tesseract_version": {
+          "unavailable": "[WinError 2] The system cannot find the file specified"
+        },
+        "tesseract_languages": {
+          "unavailable": "[WinError 2] The system cannot find the file specified"
+        }
+      },
+      "checks": {
+        "frontend": {
+          "passed": 239
+        },
+        "python": {
+          "passed": 17,
+          "skipped": 1
+        },
+        "diagnostic": {
+          "passed": 20
+        },
+        "full_application_rust": {
+          "passed": 236,
+          "failed": 5,
+          "ignored": 1,
+          "failures": [
+            "test_empirical_inspect_asimov_crop_row_ink",
+            "test_t4_2_tc_gutter_2_asimov_gutter_crop",
+            "test_t4_1_tc_real_1_asimov_loop_crop_verbatim",
+            "test_benchmark_crop_ocr",
+            "test_code_ocr_loop_conditional_constructs"
+          ]
+        },
+        "native_benchmark": {
+          "status": "passed",
+          "cases": 10,
+          "warm_repeats": 5
+        }
+      },
+      "summary": {
+        "original_raw": {
+          "weighted_cer": 0.4174964438122333,
+          "weighted_text_and_box_recall_iou50": 0.5769230769230769,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.3048016701461378,
+          "median_of_case_warm_medians_ms": 15.983049999999999
+        },
+        "preprocessed_raw": {
+          "weighted_cer": 0.4118065433854908,
+          "weighted_text_and_box_recall_iou50": 0.6239316239316239,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.30167014613778703,
+          "median_of_case_warm_medians_ms": 337.86879999999996
+        },
+        "current_pipeline": {
+          "weighted_cer": 0.15362731152204837,
+          "weighted_text_and_box_recall_iou50": 0.6452991452991453,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.11377870563674322,
+          "median_of_case_warm_medians_ms": 1031.066
+        },
+        "rapidocr_original_raw": {
+          "weighted_cer": 0.24679943100995733,
+          "weighted_text_and_box_recall_iou50": 0.8547008547008547,
+          "expected_characters": 1406,
+          "expected_words": 234,
+          "weighted_cer_no_whitespace": 0.010438413361169102,
+          "median_of_case_warm_medians_ms": 501.18779999999674
+        }
+      },
+      "models": {
+        "det": {
+          "name": "ch_PP-OCRv5_det_mobile.onnx",
+          "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
+          "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx"
+        },
+        "rec": {
+          "name": "latin_PP-OCRv5_rec_mobile.onnx",
+          "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+          "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx"
+        }
+      }
+    }
+  }
+}
