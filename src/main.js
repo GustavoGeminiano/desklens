@@ -661,6 +661,25 @@ window.addEventListener("DOMContentLoaded", async () => {
       });
 
       container.appendChild(overlay);
+      // Measure the rendered paragraph, including padding and actual wrapping.
+      // Fixed-height flex centering can push overflowing text above the box.
+      if (overlay.clientHeight > 0 && overlay.clientWidth > 0) {
+        let fittedSize = Math.max(11, fontSize);
+        overlay.style.fontSize = `${fittedSize}px`;
+        while (fittedSize > 11 && (overlay.scrollHeight > overlay.clientHeight + 1 || overlay.scrollWidth > overlay.clientWidth + 1)) {
+          overlay.style.fontSize = `${--fittedSize}px`;
+        }
+        if (overlay.scrollHeight > overlay.clientHeight + 1) {
+          const nextTop = Math.min(window.innerHeight - 8, ...boxes
+            .filter(other => other && other.y > box.y && other.x < box.x + boxW && other.x + other.width > box.x)
+            .map(other => other.y - 4));
+          const availableHeight = Math.max(boxH, nextTop - box.y);
+          overlay.style.height = `${Math.ceil(Math.min(overlay.scrollHeight, availableHeight))}px`;
+          // Exceptionally long translations remain accessible without covering
+          // another paragraph or cutting off the beginning of the translation.
+          overlay.style.overflowY = "auto";
+        }
+      }
     });
   }
 
