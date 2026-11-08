@@ -70,8 +70,10 @@ fi
 
 # 3. Auto-configure GNOME global shortcut Ctrl+Shift+X if on GNOME
 if [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ -n "$GNOME_DESKTOP_SESSION_ID" ]; then
-  python3 - << 'EOF' 2>/dev/null || true
+  python3 - "$SCRIPT_DIR/run-linux.sh" << 'EOF' 2>/dev/null || true
 import subprocess
+import shlex
+import sys
 
 path = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/desklens/"
 key_schema = f"org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{path}"
@@ -83,7 +85,7 @@ try:
         bindings.append(path)
         subprocess.run(["gsettings", "set", "org.gnome.settings-daemon.plugins.media-keys", "custom-keybindings", str(bindings)], check=True)
     subprocess.run(["gsettings", "set", key_schema, "name", "DeskLens Screen Capture"], check=True)
-    subprocess.run(["gsettings", "set", key_schema, "command", "/home/geminiano/Documents/projects/Desklens/run-linux.sh --trigger"], check=True)
+    subprocess.run(["gsettings", "set", key_schema, "command", shlex.quote(sys.argv[1]) + " --trigger"], check=True)
     subprocess.run(["gsettings", "set", key_schema, "binding", "<Primary><Shift>x"], check=True)
     print("✅ [DeskLens] GNOME global shortcut (Ctrl+Shift+X) registered successfully.")
 except Exception as e:

@@ -1,179 +1,76 @@
-<div align="center">
+# DeskLens
 
-# 🔎 DeskLens
+Capture a region of your screen, copy its text, translate it in place, or search
+for the image with Google Lens. DeskLens runs from the system tray on Windows
+and Linux.
 
-**The power of Google Lens, natively on your Desktop.**  
-*Lightweight background engine, instant OCR, on-screen translation, and visual search for Windows & Linux.*
+## Features
 
-[![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
-[![Rust](https://img.shields.io/badge/Rust-2021-DEA584?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-brightgreen?style=for-the-badge)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+- Screen capture with an adjustable selection and `Ctrl+Shift+X` shortcut.
+- OCR with selectable words, lines, and full-text copying.
+- On-screen translation with language selection and paragraph overlays.
+- Visual search in your default browser.
 
-</div>
+## Install and use
 
----
+Check [GitHub Releases](https://github.com/GustavoGeminiano/desklens/releases) for
+available Windows and Linux installers. Experimental builds and their reports
+are published as artifacts in [GitHub Actions](https://github.com/GustavoGeminiano/desklens/actions).
 
-## 💡 About DeskLens
+Launch DeskLens, press `Ctrl+Shift+X`, and drag to select a region. Use **Copy
+Text**, **Translate**, or **Search Image**. Press `Esc` to close the overlay.
+The tray menu also provides capture and exit controls. Global shortcuts may
+require desktop configuration on Wayland; see [development](docs/development.md).
 
-**DeskLens** is an open-source, ultra-lightweight desktop utility (~20 MB RAM) that brings the Google Lens mobile experience to Windows and Linux. 
+Standard builds use Windows OCR on Windows and Tesseract on Linux. Linux users
+need Tesseract and the desired language packs, for example on Ubuntu/Debian:
 
-With a single global keyboard shortcut, DeskLens freezes your screen and lets you select any region to:
-1. **Search visually** on Google Lens in your browser with zero latency.
-2. **Translate text on-screen** directly over the image, in any language pair, without covering or obscuring your view.
-3. **Copy text from anywhere** (images, video streams, protected documents, game interfaces) with interactive word-level and line-level selection.
+```sh
+sudo apt install tesseract-ocr tesseract-ocr-eng tesseract-ocr-por wl-clipboard xclip
+```
 
----
+The experimental `ocr-v2` build bundles an offline RapidOCR runtime and models.
+It does not require a separate Python or Tesseract installation. Its accuracy
+and packaging evidence are documented in the [OCR worker guide](tools/ocr_worker/README.md)
+and [research records](docs/research/ocr/README.md); it remains opt-in because
+some evaluation categories still regress.
 
-## ✨ Key Features
+## Data and network use
 
-* 🚀 **Invisible Background Engine:** Sits quietly in your system tray near the clock without cluttering your taskbar.
-* ⌨️ **Global Shortcut (`Ctrl + Shift + X`):** Instantly trigger screen capture from any application, game, or desktop environment.
-* 📸 **Smart Screen Freezing:** Captures your active display instantly with smooth dimming, keeping your workflow uninterrupted.
-* ✂️ **Precision Selection & Cropping:** Drag-to-select with interactive edge handles and live dimension feedback.
-* 🔍 **Instant Google Lens Visual Search:** One-click image upload pipeline that opens full visual search in your default browser with immediate focus.
-* 🌐 **On-Screen Multilingual Translation:**
-  * Translates text directly over the original image with clean bounding boxes.
-  * **Auto-detection** on the source language and automatic detection of your operating system's language on the target.
-  * Switch between English, Portuguese, Spanish, French, German, Japanese, Chinese, Italian, Russian, Korean, and more.
-  * Anti-collision layout algorithm prevents translated lines from overlapping each other.
-  * Click any translated box to copy that phrase, or copy the entire translation at once.
-* 📝 **High-Accuracy Native OCR Engine:**
-  * **Windows:** Powered by the built-in Microsoft WinRT OCR engine (`Windows.Media.Ocr`) with zero external dependencies.
-  * **Linux:** Powered by Tesseract OCR with 2x Lanczos super-resolution preprocessing to detect even tiny on-screen fonts.
-  * **Interactive Word Highlighting:** Click a word to copy it, drag across words to select phrases, or double-click to copy an entire line.
+OCR runs locally. Translation sends recognized text to the configured translation
+provider. **Search Image** uploads the selected image to an image-hosting service
+and opens Google Lens; it requires an internet connection. Avoid selecting content
+you do not intend to send when using these online features.
 
----
+## Develop
 
-## 📥 Download & Installation
+Use Node.js 20 and the current stable Rust toolchain, plus your platform's Tauri
+build dependencies. From the repository root:
 
-Pre-compiled, ready-to-use binaries are available on the [**GitHub Releases**](https://github.com/GustavoGeminiano/desklens/releases) page.
+```sh
+npm ci
+npm run tauri dev
+```
 
-### 🪟 Windows (Windows 10 / 11)
-Download the latest `.exe` (NSIS Installer) or `.msi` package from [Releases](https://github.com/GustavoGeminiano/desklens/releases).  
-Double-click the installer and launch DeskLens. It will run in your system tray with full native OCR out of the box.
+For setup, packaging and contributions, see [development](docs/development.md).
+For verification commands and known failures, see [testing](docs/testing.md).
 
-### 🐧 Linux (Ubuntu, Debian, Fedora, Arch, Mint, etc.)
-* **AppImage (Universal Portable):**
-  ```bash
-  chmod +x DeskLens_*.AppImage
-  ./DeskLens_*.AppImage
-  ```
-* **DEB Package (Ubuntu / Debian):**
-  ```bash
-  sudo dpkg -i desklens_*_amd64.deb
-  ```
+## Repository layout
 
-> **Linux OCR Requirement:** On Linux, text recognition uses Tesseract. If you haven't installed language packs yet, run:
-> ```bash
-> sudo apt install tesseract-ocr tesseract-ocr-por tesseract-ocr-eng wl-clipboard
-> ```
+| Path | Purpose |
+| --- | --- |
+| `src/` | HTML, CSS and JavaScript for the capture overlay and search panel |
+| `src-tauri/` | Rust app, platform integrations, capabilities and installer configuration |
+| `tests/` | Frontend regressions and shared image fixtures |
+| `scripts/` | Fixture generation and OCR benchmark runner |
+| `tools/` | Offline OCR worker and standalone native diagnostic |
+| `docs/` | Architecture, development, testing and historical research |
+| `.github/workflows/` | Native validation and packaging workflows |
 
----
+Build products, downloaded models, virtual environments and local benchmark
+reports are ignored by Git. They are not part of a clean clone.
 
-## ⌨️ Shortcuts & Controls
+## License
 
-| Action | Control |
-| :--- | :--- |
-| **Trigger DeskLens** | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> |
-| **Select Region** | Click & drag mouse |
-| **Adjust Selection** | Drag selection border handles |
-| **Search on Google Lens** | Click **Search Image** |
-| **Translate on Screen** | Click **Translate** |
-| **Switch Languages** | Choose source / target in the language bar |
-| **Copy Translated Text** | Click any translated box or **Copy Translation** |
-| **Copy Word / Phrase** | Click a word pill or drag across words |
-| **Copy Full Line** | Double-click on any word pill |
-| **Exit Overlay / Clear** | <kbd>Esc</kbd> or click **Clear** / **✕** |
-
----
-
-## 🛠️ Tech Stack
-
-* **Core & Backend:** [Rust](https://www.rust-lang.org/) + [Tauri v2](https://tauri.app/) (high performance, memory safety, tiny binary footprint).
-* **Display Server & Capture:** `xcap` crate (multi-monitor Wayland & X11 capture, Windows desktop capture).
-* **Frontend:** Vanilla JavaScript, Modern CSS3, HTML5 (rendered via WebKitGTK on Linux and WebView2 on Windows).
-* **OCR Engines:**
-  * Windows: `Windows.Media.Ocr` (built-in Windows runtime).
-  * Linux: `tesseract-ocr` with automated 2x super-resolution scaling.
-* **Continuous Integration:** GitHub Actions automated cross-platform build matrix.
-
----
-
-## 💻 Running from Source
-
-### Prerequisites
-* [Node.js](https://nodejs.org/) (v18+)
-* [Rust](https://www.rust-lang.org/tools/install) (v1.78+)
-* **Linux Build Dependencies (Ubuntu / Debian):**
-  ```bash
-  sudo apt update
-  sudo apt install -y \
-    build-essential \
-    curl \
-    wget \
-    file \
-    pkg-config \
-    libssl-dev \
-    libgtk-3-dev \
-    libwebkit2gtk-4.1-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev \
-    libxdo-dev \
-    libpipewire-0.3-dev \
-    libspa-0.2-dev \
-    tesseract-ocr \
-    tesseract-ocr-por \
-    tesseract-ocr-eng \
-    wl-clipboard \
-    xclip
-  ```
-
-### Build & Run
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/GustavoGeminiano/desklens.git
-   cd desklens
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Run in development mode:
-   * **Linux:**
-     ```bash
-     ./run-linux.sh
-     ```
-   * **Windows:**
-     ```bash
-     npm run tauri dev
-     ```
-
-4. Build production installer packages locally:
-   ```bash
-   npm run tauri build
-   ```
-   Installers will be generated under `src-tauri/target/release/bundle/`.
-
----
-
-## 📄 License
-
-Distributed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-> Disclaimer: DeskLens is an independent open-source project and is not affiliated with, endorsed by, or associated with Google LLC. Google Lens is a trademark of Google LLC.
-
-</div>
-
----
-
-<div align="center">
-Developed with ❤️ by <strong>Gustavo Geminiano</strong>
-</div>
+[MIT](LICENSE). Developed by Gustavo Geminiano.
+DeskLens is an independent project and is not affiliated with Google.

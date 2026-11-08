@@ -1,3 +1,6 @@
+> Historical snapshot from November 2026. Paths and counts below describe that
+> experiment; use [the testing guide](../testing.md) for current commands.
+
 # Test Suite Readiness Report (`TEST_READY.md`)
 
 **Date**: 2026-11-06  

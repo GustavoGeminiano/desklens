@@ -9,8 +9,8 @@ use std::path::PathBuf;
 #[test]
 fn test_code_ocr_native_pipeline_end_to_end() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    let dark_path = root.join("scripts").join("code_dark.png");
-    let light_path = root.join("scripts").join("code_light.png");
+    let dark_path = root.join("tests").join("fixtures").join("synthetic").join("code_dark.png");
+    let light_path = root.join("tests").join("fixtures").join("synthetic").join("code_light.png");
 
     if !dark_path.exists() || !light_path.exists() {
         eprintln!("Test images not found, skipping end-to-end image check: {:?}", dark_path);
@@ -70,8 +70,8 @@ fn test_code_ocr_native_pipeline_end_to_end() {
 #[test]
 fn test_dark_theme_detection_and_inversion() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    let dark_path = root.join("scripts").join("code_dark.png");
-    let light_path = root.join("scripts").join("code_light.png");
+    let dark_path = root.join("tests").join("fixtures").join("synthetic").join("code_dark.png");
+    let light_path = root.join("tests").join("fixtures").join("synthetic").join("code_light.png");
 
     if dark_path.exists() && light_path.exists() {
         let dark_img = image::open(&dark_path).unwrap().to_rgba8();
@@ -789,8 +789,8 @@ fn test_tesseract_tsv_preserves_code_operators_and_keywords() {
 #[test]
 fn test_code_ocr_loop_conditional_constructs() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    let dark_path = root.join("scripts").join("code_loop_dark.png");
-    let light_path = root.join("scripts").join("code_loop_light.png");
+    let dark_path = root.join("tests").join("fixtures").join("synthetic").join("code_loop_dark.png");
+    let light_path = root.join("tests").join("fixtures").join("synthetic").join("code_loop_light.png");
     if !dark_path.exists() || !light_path.exists() {
         return;
     }
@@ -861,7 +861,7 @@ fn test_code_ocr_loop_conditional_constructs() {
 #[test]
 fn test_benchmark_crop_ocr() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    let crop_path = root.join("scripts").join("benchmark_crop.png");
+    let crop_path = root.join("tests").join("fixtures").join("synthetic").join("benchmark_crop.png");
     if !crop_path.exists() {
         return;
     }

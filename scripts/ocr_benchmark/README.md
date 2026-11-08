@@ -1,6 +1,6 @@
 # OCR benchmark: Linux and Windows
 
-Start with the [final native validation and decision](experiments/10-final-validation.md).
+Start with the [final native validation and decision](../../docs/research/ocr/10-final-validation.md).
 
 This experiment does not select or replace the desktop application's OCR engine.
 Linux uses Tesseract; Windows uses Windows.Media.Ocr. RapidOCR runs separately
@@ -22,7 +22,7 @@ python scripts/ocr_benchmark/rapidocr_engine.py prepare --model-dir .ocr-models
 cargo build --locked --manifest-path tools/ocr-diagnostic/Cargo.toml
 cargo test --locked --manifest-path tools/ocr-diagnostic/Cargo.toml
 python -m unittest discover -s scripts/ocr_benchmark -p "test_*.py"
-python scripts/ocr_benchmark/run.py --output benchmark-results --repeats 5 --diagnostic tools/ocr-diagnostic/target/debug/ocr_diagnostic
+python scripts/ocr_benchmark/run.py --output build/reports/ocr-benchmark --repeats 5 --diagnostic tools/ocr-diagnostic/target/debug/ocr_diagnostic
 ```
 
 On Windows append `.exe` to the diagnostic executable path. `prepare` is the
@@ -30,10 +30,10 @@ explicit network-enabled step. Subsequent inference verifies local model hashes;
 it must not fetch models. The isolated Rust manifest compiles the same OCR source
 as the application without pulling in Tauri, GTK or an application window.
 
-Open `benchmark-results/report.html`; `results.json` and per-invocation native
+Open `build/reports/ocr-benchmark/report.html`; `results.json` and per-invocation native
 JSON preserve measurements and raw Tesseract TSV. Generated artifacts, models
 and the virtual environment are ignored by Git. Commit concise experiment
-summaries under `experiments/`, not dependencies or temporary files.
+summaries under `docs/research/ocr/`, not dependencies or temporary files.
 
 ## What is compared
 

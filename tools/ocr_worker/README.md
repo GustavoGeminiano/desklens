@@ -14,7 +14,7 @@ Use Python 3.12 and an isolated environment. Linux:
 uv venv --python 3.12 .venv-ocr
 uv pip install --python .venv-ocr/bin/python -r tools/ocr_worker/requirements-build.txt
 .venv-ocr/bin/python scripts/ocr_benchmark/rapidocr_engine.py prepare
-.venv-ocr/bin/python tools/ocr_worker/worker.py --self-test scripts/code_loop_dark.png
+.venv-ocr/bin/python tools/ocr_worker/worker.py --self-test tests/fixtures/synthetic/code_loop_dark.png
 ```
 
 On Windows use `.venv-ocr\Scripts\python.exe` instead. Model downloads happen only
@@ -25,7 +25,7 @@ models and fails if a model is missing or corrupted. ONNX telemetry is disabled.
 
 ```sh
 .venv-ocr/bin/python tools/ocr_worker/build.py
-build/ocr-runtime/desklens-ocr --self-test scripts/code_loop_dark.png
+build/ocr-runtime/desklens-ocr --self-test tests/fixtures/synthetic/code_loop_dark.png
 ```
 
 Build on each target OS. `build.py --prepare-models` explicitly allows downloading

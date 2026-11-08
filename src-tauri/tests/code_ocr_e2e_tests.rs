@@ -116,9 +116,9 @@ fn test_e2e_backend_indentation_ladder_preservation() {
 #[ignore = "Requires M1 adaptive binarization & M2 token segmentation: unconditioned Windows OCR drops '== 0:' and 'even'"]
 fn test_e2e_backend_benchmark_crop_native_pipeline() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
-    let crop_path = root.join("scripts").join("benchmark_crop.png");
+    let crop_path = root.join("tests").join("fixtures").join("synthetic").join("benchmark_crop.png");
     if !crop_path.exists() {
-        eprintln!("scripts/benchmark_crop.png not found; skipping");
+        eprintln!("tests/fixtures/synthetic/benchmark_crop.png not found; skipping");
         return;
     }
 

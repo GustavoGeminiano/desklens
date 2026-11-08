@@ -1,5 +1,8 @@
 Add-Type -AssemblyName System.Drawing
 
+$fixtureDir = Join-Path $PSScriptRoot "../tests/fixtures/synthetic"
+New-Item -ItemType Directory -Force -Path $fixtureDir | Out-Null
+
 function Generate-CodeImage($text, $outputPath, $isDark) {
     $bmp = New-Object System.Drawing.Bitmap 1000, 400
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -68,8 +71,8 @@ def calculate_metric(param_a: int, param_b: int = 42) -> dict:
     return {'result': result, 'tag': tag}
 "@
 
-$darkPath = Join-Path $PSScriptRoot "code_dark.png"
-$lightPath = Join-Path $PSScriptRoot "code_light.png"
+$darkPath = Join-Path $fixtureDir "code_dark.png"
+$lightPath = Join-Path $fixtureDir "code_light.png"
 
 Generate-CodeImage $sampleCode $darkPath $true
 Generate-CodeImage $sampleCode $lightPath $false
@@ -82,8 +85,8 @@ for i in range(10):
         print(f"%i is odd")
 "@
 
-$loopDarkPath = Join-Path $PSScriptRoot "code_loop_dark.png"
-$loopLightPath = Join-Path $PSScriptRoot "code_loop_light.png"
+$loopDarkPath = Join-Path $fixtureDir "code_loop_dark.png"
+$loopLightPath = Join-Path $fixtureDir "code_loop_light.png"
 
 Generate-LoopCodeImage $benchmarkCode $loopDarkPath $true
 Generate-LoopCodeImage $benchmarkCode $loopLightPath $false
@@ -145,7 +148,7 @@ function Generate-SyntaxBenchmarkImage($outputPath) {
     $bmp.Dispose()
 }
 
-$benchmarkCropPath = Join-Path $PSScriptRoot "benchmark_crop.png"
+$benchmarkCropPath = Join-Path $fixtureDir "benchmark_crop.png"
 Generate-SyntaxBenchmarkImage $benchmarkCropPath
 
 Write-Output "Successfully generated: $darkPath, $lightPath, $loopDarkPath, $loopLightPath, and $benchmarkCropPath"

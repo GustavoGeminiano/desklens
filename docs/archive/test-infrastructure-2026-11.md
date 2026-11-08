@@ -1,3 +1,6 @@
+> Historical snapshot from November 2026. Paths and counts below describe that
+> experiment; use [the testing guide](../testing.md) for current commands.
+
 # DeskLens Test Infrastructure (`TEST_INFRA.md`)
 
 This document outlines the testing architecture, methodology, dataset fixtures, and execution guidelines for DeskLens, specifically focusing on the Code Token & Word OCR Detection pipeline and the interactive overlay.

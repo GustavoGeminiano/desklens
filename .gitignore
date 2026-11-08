@@ -28,3 +28,7 @@ __pycache__/
 
 
 DESKLENS_PROJECT_HISTORY.md
+
+# The application is a member of the root Cargo workspace.
+# Its dependency lockfile is /Cargo.lock, not a nested copy.
+/src-tauri/Cargo.lock
