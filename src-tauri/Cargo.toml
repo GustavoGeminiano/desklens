@@ -5,6 +5,10 @@ description = "DeskLens - Google Lens for Desktop"
 authors = ["Gustavo Geminiano"]
 edition = "2021"
 
+[features]
+default = []
+ocr-v2 = []
+
 [lib]
 name = "desklens_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -20,6 +24,7 @@ serde_json = "1"
 xcap = "0.9"
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+tempfile = "3"
 arboard = "3.4"
 reqwest = { version = "0.13", features = ["json"] }
 

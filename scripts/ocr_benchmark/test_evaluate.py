@@ -56,7 +56,7 @@ class DatasetTests(unittest.TestCase):
         from fixtures import materialize
         with tempfile.TemporaryDirectory() as directory:
             cases=materialize(Path(__file__).with_name('manifest.json'),Path(directory))
-            self.assertEqual(len(cases),10)
+            self.assertEqual(len(cases),11)
             self.assertTrue(any(case['id']=='user_report_2026_11_07' for case in cases))
             self.assertEqual(sum(case['id'].startswith('synthetic_') for case in cases),4)
 

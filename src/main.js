@@ -27,6 +27,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   const targetLangSelect = document.getElementById("target-lang-select");
   const langSelectorGroup = document.getElementById("lang-selector-group");
 
+  const ocrModeSelect = document.getElementById("ocr-mode-select");
+  const ocrStatus = document.getElementById("ocr-status");
+  const ocrPreview = document.getElementById("ocr-preview");
+  const ocrPreviewText = document.getElementById("ocr-preview-text");
+  const ocrRetryBtn = document.getElementById("ocr-retry-btn");
+  const ocrCopyAnywayBtn = document.getElementById("ocr-copy-anyway-btn");
+
   // State
   let isSelecting = false;
   let isResizing = false;
@@ -36,6 +43,75 @@ window.addEventListener("DOMContentLoaded", async () => {
   let currentRect = { x: 0, y: 0, w: 0, h: 0 };
   let currentCropDataUrl = null;
   let activeTranslatedText = null; // Full translated text when a translation is shown
+
+  let isTranslating = false;
+  let selectionGeneration = 0;
+  let translationGeneration = 0;
+  let currentCrop = null;
+  let currentOcr = null;
+  let currentOcrPromise = null;
+  let cropPromise = null;
+  const recognitionMode = () => ocrModeSelect?.value || "auto";
+  const isCurrent = (generation) => generation === selectionGeneration;
+  function later(callback, delay) {
+    const generation = selectionGeneration;
+    const translation = translationGeneration;
+    return setTimeout(() => {
+      if (isCurrent(generation) && translation === translationGeneration) callback();
+    }, delay);
+  }
+  function setOcrStatus(message, state = "ready") {
+    if (ocrStatus) {
+      ocrStatus.textContent = message;
+      ocrStatus.dataset.state = state;
+      if (message && currentRect.w >= 20 && currentRect.h >= 20) positionActionToolbar();
+    }
+  }
+  function invalidateRecognition({ discardCrop = true } = {}) {
+    selectionGeneration += 1;
+    translationGeneration += 1;
+    isTranslating = false;
+    currentOcr = null;
+    currentOcrPromise = null;
+    cropPromise = null;
+    activeTranslatedText = null;
+    if (discardCrop) { currentCrop = null; currentCropDataUrl = null; }
+    if (cropTextHighlights) cropTextHighlights.innerHTML = "";
+    clearTranslationOverlays();
+    if (ocrPreviewText) ocrPreviewText.value = "";
+    if (ocrPreview) ocrPreview.open = false;
+    setOcrStatus("");
+    if (ocrActionBtn) ocrActionBtn.innerHTML = "<span>📝</span> Copy Text";
+    if (translateActionBtn) translateActionBtn.innerHTML = "<span>🌐</span> Translate";
+  }
+  async function getCanonicalOcr() {
+    if (!currentCrop) await requestBackendCrop();
+    if (!currentCrop) throw new Error("Select an image region first");
+    if (currentOcr) return currentOcr;
+    if (currentOcrPromise) return currentOcrPromise;
+    const generation = selectionGeneration;
+    const crop = currentCrop;
+    const mode = recognitionMode();
+    setOcrStatus("Reading text locally…", "processing");
+    const pending = window.__TAURI__.core.invoke("extract_text_from_crop", { cropId: crop.crop_id, mode })
+      .then((result) => {
+        if (!isCurrent(generation) || currentCrop !== crop) throw new Error("Selection changed");
+        currentOcr = result;
+        if (ocrPreviewText) ocrPreviewText.value = result.full_text || "";
+        const uncertain = Boolean(result.uncertain);
+        setOcrStatus(!result.full_text ? "No text found. Try another mode or crop." : uncertain ? "Some text is uncertain. Review before copying." : "Text ready · processed locally", uncertain ? "uncertain" : "ready");
+        if (ocrPreview) ocrPreview.open = uncertain;
+        renderTextHighlights(result, currentRect.w, currentRect.h);
+        return result;
+      }).catch((error) => {
+        if (isCurrent(generation)) setOcrStatus(String(error), "error");
+        throw error;
+      }).finally(() => {
+        if (currentOcrPromise === pending) currentOcrPromise = null;
+      });
+    currentOcrPromise = pending;
+    return pending;
+  }
 
   // Helper to switch view modes
   function setViewMode(mode) {
@@ -88,6 +164,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Clear current active selection
   function clearSelection() {
+    const cropId = currentCrop?.crop_id;
+    if (cropId && window.__TAURI__?.core?.invoke) {
+      window.__TAURI__.core.invoke("clear_crop_session", { cropId }).catch(() => {});
+    }
+    invalidateRecognition();
     isSelecting = false;
     isResizing = false;
     activeHandle = null;
@@ -151,6 +232,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Joins a slice of pill items: words on the same line with gaps/spacing, different lines with relative indentation, blank lines and newlines
   function joinPillItems(items) {
     if (!items || items.length === 0) return "";
+    if (items.every((item) => typeof item.canonicalText === "string" && Number.isInteger(item.start_utf16) && Number.isInteger(item.end_utf16))) {
+      return items[0].canonicalText.slice(Math.min(...items.map((item) => item.start_utf16)), Math.max(...items.map((item) => item.end_utf16)));
+    }
     if (items.length === 1) return items[0].text || "";
 
     // Estimate character width from selected items
@@ -338,7 +422,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   function flashOcrButton(html) {
     if (!ocrActionBtn) return;
     ocrActionBtn.innerHTML = html;
-    setTimeout(() => {
+    later(() => {
       ocrActionBtn.innerHTML = activeTranslatedText
         ? "<span>📝</span> Copy Translation"
         : "<span>📝</span> Copy Text";
@@ -360,11 +444,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       pill.dataset.index = String(flatItems.length);
       pill.dataset.line = String(item.lineIndex ?? idx);
 
-      const pad = 1;
-      const pillLeft = Math.max(0, Math.round(item.x) - pad);
-      const pillTop = Math.max(0, Math.round(item.y) - pad);
-      const pillWidth = Math.round(item.width) + pad * 2;
-      const pillHeight = Math.round(item.height) + pad * 2;
+      const pillLeft = item.x;
+      const pillTop = item.y;
+      const pillWidth = item.width;
+      const pillHeight = item.height;
 
       pill.style.left = `${pillLeft}px`;
       pill.style.top = `${pillTop}px`;
@@ -394,6 +477,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         lineIndex: item.lineIndex ?? idx,
         wordIndex: item.wordIndex ?? 0,
         text: item.text,
+        canonicalText: item.canonicalText,
+        start_utf16: item.start_utf16,
+        end_utf16: item.end_utf16,
         lineText: item.lineText,
         x: item.x,
         y: item.y,
@@ -428,9 +514,11 @@ window.addEventListener("DOMContentLoaded", async () => {
           }
         };
 
+        const generation = selectionGeneration;
         const onUp = async () => {
           window.removeEventListener("mousemove", onMove);
           window.removeEventListener("mouseup", onUp);
+          if (!isCurrent(generation)) return;
 
           const minI = Math.min(startIdx, currentEndIdx);
           const maxI = Math.max(startIdx, currentEndIdx);
@@ -439,15 +527,16 @@ window.addEventListener("DOMContentLoaded", async () => {
           if (!phrase) return;
 
           const ok = await copyTextToClipboard(phrase);
+          if (!isCurrent(generation)) return;
           selectedSlice.forEach((w) => {
             w.pill.classList.remove("selected");
             if (ok) {
               w.pill.classList.add("copied");
-              setTimeout(() => w.pill.classList.remove("copied"), 800);
+              later(() => w.pill.classList.remove("copied"), 800);
             }
           });
           const snippet = phrase.length > 25 ? phrase.slice(0, 25) + "..." : phrase;
-          flashOcrButton(ok ? `<span>📋</span> Copied: "${snippet.replace(/\n/g, " ")}"` : "<span>⚠️</span> Copy failed");
+          flashOcrButton(ok ? `<span>📋</span> Copied: "${snippet.replace(/\n/g, " ").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")}"` : "<span>⚠️</span> Copy failed");
         };
 
         window.addEventListener("mousemove", onMove);
@@ -457,14 +546,16 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 2. Double click copies the whole line/sentence with indentation preserved
       pill.addEventListener("dblclick", async (e) => {
         e.stopPropagation();
+        const generation = selectionGeneration;
         const lineSentence = pillObj.lineText || joinPillItems(flatItems.filter((w) => w.lineIndex === pillObj.lineIndex));
         if (!lineSentence) return;
         const ok = await copyTextToClipboard(lineSentence);
+        if (!isCurrent(generation)) return;
         if (ok) {
           const lineItems = flatItems.filter((w) => w.lineIndex === pillObj.lineIndex);
           lineItems.forEach((w) => {
             w.pill.classList.add("copied");
-            setTimeout(() => w.pill.classList.remove("copied"), 900);
+            later(() => w.pill.classList.remove("copied"), 900);
           });
           flashOcrButton("<span>📋</span> Copied Line!");
         }
@@ -477,54 +568,26 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Render interactive word highlights directly over text in selection box (Sprint 4)
   function renderTextHighlights(ocrResult, cropW, cropH) {
-    if (!cropTextHighlights || !ocrResult?.lines) return;
-    cropTextHighlights.innerHTML = "";
-
-    const tempImg = new Image();
-    tempImg.onload = () => {
-      // A translation may have been applied meanwhile; never overwrite translated pills
-      if (activeTranslatedText) return;
-      const realW = tempImg.naturalWidth || cropW;
-      const realH = tempImg.naturalHeight || cropH;
-      const scaleX = currentRect.w / realW;
-      const scaleY = currentRect.h / realH;
-
-      const items = [];
-      ocrResult.lines.forEach((line, lineIdx) => {
-        (line.words || []).forEach((word, wordIdx) => {
-          if (!word.text || !word.width || !word.height) return;
-
-          // Defensive guards against extreme aspect-ratio vertical border boxes, sub-3px boxes, and border margin artifacts
-          if (word.width < 3 || word.height < 3) return;
-
-          const isSingleNarrow = word.text.length === 1 && /^[\p{L}\p{N}!\[\]|/\\(){}:;?%=\+\-*<>&^~'"`.,_@$#]$/u.test(word.text);
-          const isCodeOp = /^(===|!==|>>>|==|!=|<=|>=|\+=|-=|\*=|\/=|%=|&&|\|\||->|=>|::|\.\.|<<|>>|\+\+|--|\*\*|\/\/|[=+\-*/%<>!&|^~?:;.,()[\]{}])$/.test(word.text.trim());
-          const cleanKeyword = word.text.trim().replace(/[:;,]+$/, "");
-          const isCodeKeyword = /^(if|in|is|fn|as|do|to|go|or|for|def|let|var|val|try|mut|ref|use|pub|mod|new|get|set|else|elif|case|loop|end|nil|not|and|pass|with|from|return|class|import|while|yield|await|async|break|continue|struct|enum|impl|type|trait|const|static|where|super|self|crate|except|finally|match)$/i.test(cleanKeyword);
-          const isExcessiveTall = word.height > 40 && word.width < 15;
-          const isEdgeBorder = (word.x <= 2 || word.y <= 2 || (word.x + word.width) >= realW - 2 || (word.y + word.height) >= realH - 2) && (word.height > 30 && word.width < 15);
-          if (isEdgeBorder) return;
-
-          const shouldFilterAspect = !isCodeOp && (!isCodeKeyword || word.height > 40) && (isExcessiveTall || (word.text.length >= 2 && word.text.length <= 3) || !isSingleNarrow);
-          if (shouldFilterAspect && word.height > word.width * 3.2 && word.text.length <= 3) return;
-
-          items.push({
-            text: word.text,
-            x: word.x * scaleX,
-            y: word.y * scaleY,
-            width: word.width * scaleX,
-            height: word.height * scaleY,
-            lineIndex: lineIdx,
-            wordIndex: wordIdx,
-            lineText: line.text,
-          });
+    if (!cropTextHighlights || !ocrResult?.lines || activeTranslatedText) return;
+    const realW = ocrResult.image_width || currentCrop?.image_width || cropW;
+    const realH = ocrResult.image_height || currentCrop?.image_height || cropH;
+    const scaleX = currentRect.w / realW;
+    const scaleY = currentRect.h / realH;
+    const items = [];
+    ocrResult.lines.forEach((line, lineIdx) => {
+      (line.words || []).forEach((word, wordIdx) => {
+        if (!word.text || ![word.x, word.y, word.width, word.height].every(Number.isFinite) || word.width <= 0 || word.height <= 0) return;
+        items.push({
+          text: word.text,
+          x: word.x * scaleX, y: word.y * scaleY,
+          width: word.width * scaleX, height: word.height * scaleY,
+          lineIndex: lineIdx, wordIndex: wordIdx, lineText: line.text,
+          canonicalText: ocrResult.full_text,
+          start_utf16: word.start_utf16, end_utf16: word.end_utf16,
         });
       });
-      renderInteractivePills(items, { translated: false });
-    };
-    if (currentCropDataUrl) {
-      tempImg.src = currentCropDataUrl;
-    }
+    });
+    renderInteractivePills(items, { translated: false });
   }
 
   // =========================================================================
@@ -582,13 +645,16 @@ window.addEventListener("DOMContentLoaded", async () => {
       // Tooltip and click-to-copy
       overlay.title = `Original: "${box.text || ""}"\nClick to copy translation`;
       overlay.addEventListener("click", async (e) => {
+        const generation = selectionGeneration;
+        const translation = translationGeneration;
         e.stopPropagation();
         if (displayText) {
           const copied = await copyTextToClipboard(displayText);
+          if (!isCurrent(generation) || translation !== translationGeneration) return;
           if (copied) {
             overlay.classList.add("copied");
             if (typeof setTimeout !== "undefined") {
-              setTimeout(() => overlay.classList.remove("copied"), 800);
+              later(() => overlay.classList.remove("copied"), 800);
             }
           }
         }
@@ -604,41 +670,29 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Request backend Rust to crop the selected frame slice
   async function requestBackendCrop() {
     if (currentRect.w < 20 || currentRect.h < 20) return null;
-
-    if (window.__TAURI__?.core?.invoke) {
-      try {
-        const croppedDataUrl = await window.__TAURI__.core.invoke("crop_selection", {
-          x: Math.round(currentRect.x),
-          y: Math.round(currentRect.y),
-          width: Math.round(currentRect.w),
-          height: Math.round(currentRect.h),
-          screenWidth: window.innerWidth,
-          screenHeight: window.innerHeight,
-        });
-
-        if (croppedDataUrl) {
-          currentCropDataUrl = croppedDataUrl;
-          if (cropPreviewThumb) {
-            cropPreviewThumb.src = croppedDataUrl;
-          }
-
-          // Trigger OCR in background to highlight interactive words
-          window.__TAURI__.core.invoke("extract_text_from_crop")
-            .then((ocrRes) => {
-              renderTextHighlights(ocrRes, currentRect.w, currentRect.h);
-            })
-            .catch(() => {});
-
-          return croppedDataUrl;
-        }
-      } catch (err) {
-        console.error("Failed to crop selection:", err);
-      }
-    }
-    return null;
+    if (cropPromise) return cropPromise;
+    if (!window.__TAURI__?.core?.invoke) return null;
+    const generation = selectionGeneration;
+    const rect = { ...currentRect };
+    const pending = window.__TAURI__.core.invoke("crop_selection", {
+      x: Math.round(rect.x), y: Math.round(rect.y),
+      width: Math.round(rect.w), height: Math.round(rect.h),
+      screenWidth: window.innerWidth, screenHeight: window.innerHeight,
+    }).then((crop) => {
+      if (!isCurrent(generation)) return null;
+      currentCrop = crop;
+      currentCropDataUrl = crop.data_url;
+      if (cropPreviewThumb) cropPreviewThumb.src = crop.data_url;
+      getCanonicalOcr().catch(() => {});
+      return crop.data_url;
+    }).catch((error) => {
+      if (isCurrent(generation)) setOcrStatus(String(error), "error");
+      return null;
+    }).finally(() => { if (cropPromise === pending) cropPromise = null; });
+    cropPromise = pending;
+    return pending;
   }
 
-  // Position floating action toolbar near the selection, clamped within screen bounds
   function positionActionToolbar() {
     cropActions.classList.remove("hidden");
     if (langSelectorGroup) {
@@ -681,6 +735,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (e.target.closest("#crop-actions") || e.target.closest(".lens-header")) {
       return;
     }
+
+    invalidateRecognition();
 
     // Check if clicking on an edge handle to resize existing box
     const handleEl = e.target.closest(".edge-handle");
@@ -774,12 +830,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     searchActionBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const originalHtml = searchActionBtn.innerHTML;
+      const generation = selectionGeneration;
       searchActionBtn.innerHTML = "<span>⏳</span> Opening...";
 
       try {
         if (!currentCropDataUrl) {
           await requestBackendCrop();
         }
+
+        if (!isCurrent(generation) || !currentCrop) return;
 
         // Hide the fullscreen overlay immediately on click so the user never has to press ESC
         // and the always-on-top overlay never blocks the browser window from taking focus.
@@ -791,56 +850,49 @@ window.addEventListener("DOMContentLoaded", async () => {
       } catch (err) {
         console.error("Failed to open Google Lens:", err);
       } finally {
-        searchActionBtn.innerHTML = originalHtml;
+        if (isCurrent(generation)) searchActionBtn.innerHTML = originalHtml;
       }
     });
   }
 
-  if (ocrActionBtn) {
-    ocrActionBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const originalHtml = ocrActionBtn.innerHTML;
-      ocrActionBtn.innerHTML = "<span>⏳</span> Reading text...";
-
-      try {
-        if (!currentCropDataUrl) {
-          await requestBackendCrop();
-        }
-
-        // When a translation is displayed, copy the translated text instead of the original
-        if (activeTranslatedText) {
-          const ok = await copyTextToClipboard(activeTranslatedText);
-          ocrActionBtn.innerHTML = ok ? "<span>✅</span> Translation Copied!" : "<span>⚠️</span> Copy failed";
-          setTimeout(() => {
-            ocrActionBtn.innerHTML = "<span>📝</span> Copy Translation";
-          }, 1800);
-          return;
-        }
-
-        if (window.__TAURI__?.core?.invoke) {
-          const extractedText = await window.__TAURI__.core.invoke("copy_text_from_crop");
-          if (extractedText && extractedText.trim().length > 0) {
-            ocrActionBtn.innerHTML = "<span>✅</span> Text Copied!";
-            setTimeout(() => {
-              hideOverlay();
-              ocrActionBtn.innerHTML = originalHtml;
-            }, 600);
-          } else {
-            ocrActionBtn.innerHTML = "<span>⚠️</span> No text found";
-            setTimeout(() => {
-              ocrActionBtn.innerHTML = originalHtml;
-            }, 1800);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to copy OCR text:", err);
-        ocrActionBtn.innerHTML = "<span>⚠️</span> OCR Error";
-        setTimeout(() => {
-          ocrActionBtn.innerHTML = originalHtml;
-        }, 1800);
+  async function copyRecognizedText({ acceptUncertain = false } = {}) {
+    const generation = selectionGeneration;
+    try {
+      const result = activeTranslatedText ? null : await getCanonicalOcr();
+      if (!isCurrent(generation)) return;
+      if (result?.uncertain && !acceptUncertain) {
+        if (ocrPreview) ocrPreview.open = true;
+        setOcrStatus("Review the uncertain text, then choose Copy anyway.", "uncertain");
+        return;
       }
-    });
+      const text = activeTranslatedText || result?.full_text || "";
+      if (!text) { setOcrStatus("No text found. Try another mode or crop.", "error"); return; }
+      const ok = await copyTextToClipboard(text);
+      if (!isCurrent(generation)) return;
+      flashOcrButton(ok ? "<span>✅</span> Text Copied!" : "<span>⚠️</span> Copy failed");
+    } catch (error) {
+      if (isCurrent(generation)) setOcrStatus(String(error), "error");
+    }
   }
+  if (ocrActionBtn) ocrActionBtn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await copyRecognizedText();
+  });
+  if (ocrCopyAnywayBtn) ocrCopyAnywayBtn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await copyRecognizedText({ acceptUncertain: true });
+  });
+  if (ocrRetryBtn) ocrRetryBtn.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    // A new crop identity explicitly retries a failed worker/cache entry.
+    invalidateRecognition();
+    await requestBackendCrop();
+  });
+  if (ocrPreview) ocrPreview.addEventListener("toggle", () => { if (currentCrop) positionActionToolbar(); });
+  if (ocrModeSelect) ocrModeSelect.addEventListener("change", () => {
+    invalidateRecognition({ discardCrop: false });
+    if (currentCrop) getCanonicalOcr().catch(() => {});
+  });
 
   // =========================================================================
   // Language Selection Setup & Persistence (Requirement R2)
@@ -912,9 +964,13 @@ window.addEventListener("DOMContentLoaded", async () => {
       try {
         localStorage.setItem(STORAGE_KEY_SOURCE_LANG, sourceLangSelect.value);
       } catch (_) {}
-      if (activeTranslatedText) {
-        triggerTranslation();
-      }
+      const refresh = Boolean(activeTranslatedText) || isTranslating;
+      translationGeneration += 1;
+      isTranslating = false;
+      activeTranslatedText = null;
+      clearTranslationOverlays();
+      if (currentOcr) renderTextHighlights(currentOcr, currentRect.w, currentRect.h);
+      if (refresh) triggerTranslation();
     });
   }
 
@@ -926,9 +982,13 @@ window.addEventListener("DOMContentLoaded", async () => {
         localStorage.setItem(STORAGE_KEY_TARGET_LANG, targetLangSelect.value);
       } catch (_) {}
       updateTranslateButtonTitle();
-      if (activeTranslatedText) {
-        triggerTranslation();
-      }
+      const refresh = Boolean(activeTranslatedText) || isTranslating;
+      translationGeneration += 1;
+      isTranslating = false;
+      activeTranslatedText = null;
+      clearTranslationOverlays();
+      if (currentOcr) renderTextHighlights(currentOcr, currentRect.w, currentRect.h);
+      if (refresh) triggerTranslation();
     });
   }
 
@@ -940,11 +1000,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   // =========================================================================
   // Translate Action Button Handler (Requirement R3)
   // =========================================================================
-  let isTranslating = false;
 
   async function triggerTranslation() {
     if (!translateActionBtn || isTranslating) return;
     isTranslating = true;
+    const generation = selectionGeneration;
+    const translation = ++translationGeneration;
+    const current = () => isCurrent(generation) && translation === translationGeneration;
+    const rectSnapshot = { ...currentRect };
 
     // Reveal language selectors and adapt toolbar position
     if (langSelectorGroup) {
@@ -964,7 +1027,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
       if (window.__TAURI__?.core?.invoke) {
         // 1. Get OCR bounding boxes from current crop
-        const ocrResult = await window.__TAURI__.core.invoke("extract_text_from_crop");
+        const ocrResult = await getCanonicalOcr();
+        if (!current()) return;
         const flatBoxes = [];
 
         if (ocrResult?.boxes && ocrResult.boxes.length > 0) {
@@ -999,7 +1063,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
         if (flatBoxes.length === 0) {
           translateActionBtn.innerHTML = "<span>⚠️</span> No text found";
-          setTimeout(() => {
+          later(() => {
             translateActionBtn.innerHTML = defaultButtonHtml;
           }, 1800);
           return;
@@ -1014,6 +1078,8 @@ window.addEventListener("DOMContentLoaded", async () => {
           targetLang: selectedTargetLang,
           sourceLang: selectedSourceLang,
         });
+
+        if (!current()) return;
 
         // Safely unpack enriched response or legacy array
         let rawBoxes = Array.isArray(translatedBoxes) ? translatedBoxes : (translatedBoxes?.boxes || []);
@@ -1057,6 +1123,7 @@ window.addEventListener("DOMContentLoaded", async () => {
                 targetLang: effectiveTarget,
                 sourceLang: selectedSourceLang,
               });
+              if (!current()) return;
               if (retranslated) {
                 translatedBoxes = retranslated;
                 rawBoxes = Array.isArray(translatedBoxes) ? translatedBoxes : (translatedBoxes?.boxes || []);
@@ -1067,83 +1134,34 @@ window.addEventListener("DOMContentLoaded", async () => {
           }
         }
 
-        // Snapshot current selection rect to prevent stale rendering if user modifies crop
-        const rectSnapshot = { ...currentRect };
-
-        // 3. Map crop pixel coordinates to container CSS coordinates
-        const tempImg = new Image();
-        tempImg.onload = () => {
-          if (rectSnapshot.w <= 0 || rectSnapshot.h <= 0) {
-            translateActionBtn.innerHTML = defaultButtonHtml;
-            return;
-          }
-          const realW = tempImg.naturalWidth || rectSnapshot.w;
-          const realH = tempImg.naturalHeight || rectSnapshot.h;
-          const scaleX = rectSnapshot.w / realW;
-          const scaleY = rectSnapshot.h / realH;
-
-          const mappedBoxes = (rawBoxes || []).map((b) => ({
-            ...b,
-            x: rectSnapshot.x + Math.round(b.x * scaleX),
-            y: rectSnapshot.y + Math.round(b.y * scaleY),
-            width: Math.round(b.width * scaleX),
-            height: Math.round(b.height * scaleY),
-          }));
-
-          // Resolve vertical collisions / overlaps between adjacent lines in document OCR
-          for (let i = 0; i < mappedBoxes.length; i++) {
-            const b1 = mappedBoxes[i];
-            if (b1.width <= 0 || b1.height <= 0) continue;
-            for (let j = 0; j < mappedBoxes.length; j++) {
-              if (i === j) continue;
-              const b2 = mappedBoxes[j];
-              if (b2.width <= 0 || b2.height <= 0) continue;
-              if (b2.y >= b1.y && b2.y < b1.y + b1.height) {
-                const hOverlap = Math.max(0, Math.min(b1.x + b1.width, b2.x + b2.width) - Math.max(b1.x, b2.x));
-                const minW = Math.min(b1.width, b2.width);
-                if (minW > 0 && hOverlap / minW > 0.3) {
-                  b2.y = b1.y + b1.height + 2;
-                }
-              }
-            }
-          }
-
-          renderTranslationOverlays(mappedBoxes);
-
-          // Clear interactive word highlight layer so it doesn't double-render or overlap
-          if (cropTextHighlights) {
-            cropTextHighlights.innerHTML = "";
-          }
-
-          // Store full translated text for the Copy action
-          activeTranslatedText = (rawBoxes || [])
-            .map((b) => (b.translated_text || b.text || "").trim())
-            .filter(Boolean)
-            .join("\n");
-
-          if (ocrActionBtn) {
-            ocrActionBtn.innerHTML = "<span>📝</span> Copy Translation";
-          }
-
-          translateActionBtn.innerHTML = "<span>✅</span> Translated!";
-          setTimeout(() => {
-            translateActionBtn.innerHTML = defaultButtonHtml;
-          }, 2000);
-        };
-        tempImg.onerror = (err) => {
-          console.error("Failed to decode cropped image for translation overlays:", err);
-          translateActionBtn.innerHTML = defaultButtonHtml;
-        };
-        tempImg.src = currentCropDataUrl;
+        if (!current()) return;
+        const realW = ocrResult.image_width || currentCrop.image_width;
+        const realH = ocrResult.image_height || currentCrop.image_height;
+        const scaleX = rectSnapshot.w / realW;
+        const scaleY = rectSnapshot.h / realH;
+        const mappedBoxes = (rawBoxes || []).map((box) => ({
+          ...box,
+          x: rectSnapshot.x + box.x * scaleX,
+          y: rectSnapshot.y + box.y * scaleY,
+          width: box.width * scaleX,
+          height: box.height * scaleY,
+        }));
+        renderTranslationOverlays(mappedBoxes);
+        if (cropTextHighlights) cropTextHighlights.innerHTML = "";
+        activeTranslatedText = (rawBoxes || []).map((box) => box.translated_text || box.text || "").filter(Boolean).join("\n");
+        if (ocrActionBtn) ocrActionBtn.innerHTML = "<span>📝</span> Copy Translation";
+        translateActionBtn.innerHTML = "<span>✅</span> Translated!";
+        later(() => { translateActionBtn.innerHTML = defaultButtonHtml; }, 2000);
       }
     } catch (err) {
+      if (!current()) return;
       console.error("Failed to translate on screen:", err);
       translateActionBtn.innerHTML = "<span>⚠️</span> Error";
-      setTimeout(() => {
+      later(() => {
         translateActionBtn.innerHTML = defaultButtonHtml;
       }, 1800);
     } finally {
-      isTranslating = false;
+      if (current()) isTranslating = false;
     }
   }
 
@@ -1180,7 +1198,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     testCaptureBtn.addEventListener("click", async () => {
       if (window.__TAURI__?.core?.invoke) {
         try {
+          clearSelection();
+          const generation = selectionGeneration;
           const screenshotUrl = await window.__TAURI__.core.invoke("trigger_capture");
+          if (!isCurrent(generation)) return;
           if (frozenImage && screenshotUrl) {
             frozenImage.src = screenshotUrl;
             setViewMode("overlay");
@@ -1204,8 +1225,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (window.__TAURI__?.event?.listen) {
     await window.__TAURI__.event.listen("screenshot-captured", (event) => {
       if (frozenImage && event.payload) {
+        clearSelection();
+        const generation = selectionGeneration;
         frozenImage.onload = () => {
-          clearSelection();
+          if (!isCurrent(generation)) return;
           setViewMode("overlay");
         };
         frozenImage.src = event.payload;

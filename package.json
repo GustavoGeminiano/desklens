@@ -5,7 +5,8 @@
   "description": "DeskLens - Google Lens for Desktop (Windows & Linux)",
   "scripts": {
     "tauri": "tauri",
-    "test": "node --test"
+    "test": "node --test",
+    "ocr:build": "tauri build --features ocr-v2 --config src-tauri/tauri.ocr.conf.json"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

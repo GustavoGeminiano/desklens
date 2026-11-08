@@ -14,9 +14,9 @@
         410,
         299
       ],
-      "provenance": "Existing screenshot crop, manually transcribed and word ink boxes manually annotated; blue OCR highlights already present in source; gutters and toolbar excluded. Not clean held-out acquisition.",
+      "provenance": "Existing screenshot crop, manually transcribed and word ink boxes manually annotated; blue OCR highlights already present in source; gutters and toolbar excluded. Not clean held-out acquisition. Indentation annotation corrected to visual 3/6 monospaced columns (2026-11-08); original tabs/spaces cannot be determined from pixels.",
       "truth": {
-        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+        "full_text": "for i in range(10):\n   if i % 2 == 0:\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
         "lines": [
           {
             "text": "for i in range(10):",
@@ -52,7 +52,7 @@
             ]
           },
           {
-            "text": "    if i % 2 == 0:",
+            "text": "   if i % 2 == 0:",
             "words": [
               {
                 "text": "if",
@@ -99,7 +99,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is even\")",
+            "text": "      print(f(\"%i is even\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -125,7 +125,7 @@
             ]
           },
           {
-            "text": "    else:",
+            "text": "   else:",
             "words": [
               {
                 "text": "else:",
@@ -137,7 +137,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is odd\")",
+            "text": "      print(f(\"%i is odd\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -278,9 +278,9 @@
         418,
         183
       ],
-      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data.",
+      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data. Indentation annotation corrected to visual 3/6 monospaced columns (2026-11-08); original tabs/spaces cannot be determined from pixels.",
       "truth": {
-        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")",
+        "full_text": "for i in range(10):\n   if i % 2 == 0:\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")",
         "lines": [
           {
             "text": "for i in range(10):",
@@ -316,7 +316,7 @@
             ]
           },
           {
-            "text": "    if i % 2 == 0:",
+            "text": "   if i % 2 == 0:",
             "words": [
               {
                 "text": "if",
@@ -363,7 +363,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is even\")",
+            "text": "      print(f(\"%i is even\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -389,7 +389,7 @@
             ]
           },
           {
-            "text": "    else:",
+            "text": "   else:",
             "words": [
               {
                 "text": "else:",
@@ -401,7 +401,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is odd\")",
+            "text": "      print(f(\"%i is odd\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -438,9 +438,9 @@
         436,
         330
       ],
-      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data.",
+      "provenance": "Manually transcribed existing screenshot; approximate manually annotated word ink bounds. Prior blue OCR highlights contaminate image; gutter/toolbar cropped out. Same Asimov content as other crops; not independent held-out data. Indentation annotation corrected to visual 3/6 monospaced columns (2026-11-08); original tabs/spaces cannot be determined from pixels.",
       "truth": {
-        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+        "full_text": "for i in range(10):\n   if i % 2 == 0:\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
         "lines": [
           {
             "text": "for i in range(10):",
@@ -476,7 +476,7 @@
             ]
           },
           {
-            "text": "    if i % 2 == 0:",
+            "text": "   if i % 2 == 0:",
             "words": [
               {
                 "text": "if",
@@ -523,7 +523,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is even\")",
+            "text": "      print(f(\"%i is even\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -549,7 +549,7 @@
             ]
           },
           {
-            "text": "    else:",
+            "text": "   else:",
             "words": [
               {
                 "text": "else:",
@@ -561,7 +561,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is odd\")",
+            "text": "      print(f(\"%i is odd\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -1164,9 +1164,9 @@
         960,
         753
       ],
-      "provenance": "Exact image attached by user on 2026-11-07, manually transcribed with approximate word ink bounds. Existing DeskLens highlights contaminate image. Shares Asimov content with three other cases; not clean held-out acquisition.",
+      "provenance": "Exact image attached by user on 2026-11-07, manually transcribed with approximate word ink bounds. Existing DeskLens highlights contaminate image. Shares Asimov content with three other cases; not clean held-out acquisition. Indentation annotation corrected to visual 3/6 monospaced columns (2026-11-08); original tabs/spaces cannot be determined from pixels.",
       "truth": {
-        "full_text": "for i in range(10):\n    if i % 2 == 0:\n        print(f(\"%i is even\")\n    else:\n        print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
+        "full_text": "for i in range(10):\n   if i % 2 == 0:\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")\n0 is even\n1 is odd\n2 is even\n3 is odd",
         "lines": [
           {
             "text": "for i in range(10):",
@@ -1202,7 +1202,7 @@
             ]
           },
           {
-            "text": "    if i % 2 == 0:",
+            "text": "   if i % 2 == 0:",
             "words": [
               {
                 "text": "if",
@@ -1249,7 +1249,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is even\")",
+            "text": "      print(f(\"%i is even\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -1275,7 +1275,7 @@
             ]
           },
           {
-            "text": "    else:",
+            "text": "   else:",
             "words": [
               {
                 "text": "else:",
@@ -1287,7 +1287,7 @@
             ]
           },
           {
-            "text": "        print(f(\"%i is odd\")",
+            "text": "      print(f(\"%i is odd\")",
             "words": [
               {
                 "text": "print(f(\"%i",
@@ -1412,6 +1412,166 @@
                 "x": 111,
                 "y": 397,
                 "width": 53,
+                "height": 27
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "user_report_2026_11_08_code",
+      "image": "scripts/ocr_benchmark/assets/user_report_2026_11_08_code.png",
+      "crop": [
+        419,
+        324,
+        960,
+        553
+      ],
+      "provenance": "Exact second user screenshot (2026-11-08), five-line selected code. Original screenshot contains blue DeskLens overlays; toolbar and gutter cropped. Literal malformed source preserved. Manual word bounds shared pixel positions verified visually; visual indentation 3/6 columns.",
+      "truth": {
+        "full_text": "for i in range(10):\n   if i % 2 == 0:\n      print(f(\"%i is even\")\n   else:\n      print(f(\"%i is odd\")",
+        "lines": [
+          {
+            "text": "for i in range(10):",
+            "words": [
+              {
+                "text": "for",
+                "x": 10,
+                "y": 7,
+                "width": 54,
+                "height": 27
+              },
+              {
+                "text": "i",
+                "x": 89,
+                "y": 7,
+                "width": 15,
+                "height": 27
+              },
+              {
+                "text": "in",
+                "x": 128,
+                "y": 7,
+                "width": 35,
+                "height": 27
+              },
+              {
+                "text": "range(10):",
+                "x": 188,
+                "y": 7,
+                "width": 185,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "   if i % 2 == 0:",
+            "words": [
+              {
+                "text": "if",
+                "x": 69,
+                "y": 55,
+                "width": 35,
+                "height": 27
+              },
+              {
+                "text": "i",
+                "x": 129,
+                "y": 55,
+                "width": 15,
+                "height": 27
+              },
+              {
+                "text": "%",
+                "x": 166,
+                "y": 55,
+                "width": 21,
+                "height": 27
+              },
+              {
+                "text": "2",
+                "x": 207,
+                "y": 55,
+                "width": 16,
+                "height": 27
+              },
+              {
+                "text": "==",
+                "x": 246,
+                "y": 55,
+                "width": 37,
+                "height": 27
+              },
+              {
+                "text": "0:",
+                "x": 306,
+                "y": 55,
+                "width": 35,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "      print(f(\"%i is even\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 129,
+                "y": 101,
+                "width": 211,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 366,
+                "y": 101,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "even\")",
+                "x": 425,
+                "y": 101,
+                "width": 109,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "   else:",
+            "words": [
+              {
+                "text": "else:",
+                "x": 69,
+                "y": 149,
+                "width": 90,
+                "height": 27
+              }
+            ]
+          },
+          {
+            "text": "      print(f(\"%i is odd\")",
+            "words": [
+              {
+                "text": "print(f(\"%i",
+                "x": 129,
+                "y": 196,
+                "width": 211,
+                "height": 27
+              },
+              {
+                "text": "is",
+                "x": 366,
+                "y": 196,
+                "width": 33,
+                "height": 27
+              },
+              {
+                "text": "odd\")",
+                "x": 425,
+                "y": 196,
+                "width": 88,
                 "height": 27
               }
             ]

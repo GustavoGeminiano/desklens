@@ -624,3 +624,12 @@ button:active {
   border-color: #4ade80 !important;
   box-shadow: 0 0 10px rgba(34, 197, 94, 0.8) !important;
 }
+
+/* Recognition feedback stays attached to the active crop. */
+.crop-actions { flex-wrap: wrap; max-width: min(800px, calc(100vw - 24px)); }
+.ocr-feedback { flex-basis: 100%; min-width: 0; color: #cbd5e1; font-size: 12px; white-space: normal; }
+#ocr-retry-btn { display: inline-flex; margin: 2px 0 2px 8px; padding: 3px 8px; font-size: 12px; }
+#ocr-status:empty { display: none; }
+#ocr-status[data-state="error"], #ocr-status[data-state="uncertain"] { color: #fbbf24; }
+#ocr-preview summary { cursor: pointer; padding: 4px 0; }
+#ocr-preview-text { display: block; width: 100%; max-height: 160px; resize: vertical; box-sizing: border-box; background: #111827; color: #f8fafc; border: 1px solid #475569; padding: 8px; font-family: monospace; white-space: pre; }

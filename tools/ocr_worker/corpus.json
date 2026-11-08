@@ -1,0 +1,816 @@
+{
+  "schema_version": 1,
+  "provenance": "Synthetic source corpus, not real screenshots. Content-disjoint development and held-out groups. Held-out sources were fixed before model evaluation.",
+  "cases": [
+    {
+      "id": "code_01",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "for i in range(10):",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "   if i % 2 == 0:",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "      print(f(\"%i is even\")",
+          "x": 24,
+          "y": 98
+        },
+        {
+          "text": "   else:",
+          "x": 24,
+          "y": 138
+        },
+        {
+          "text": "      print(f(\"%i is odd\")",
+          "x": 24,
+          "y": 178
+        }
+      ]
+    },
+    {
+      "id": "code_02",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "def total(values):",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "    amount = sum(values)",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "    return amount / len(values)",
+          "x": 24,
+          "y": 98
+        }
+      ]
+    },
+    {
+      "id": "code_03",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "const items = [2, 4, 8];",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "items.forEach((x) => console.log(x));",
+          "x": 24,
+          "y": 58
+        }
+      ]
+    },
+    {
+      "id": "code_04",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "fn main() {",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "    let count = 17;",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "    println!(\"{}\", count);",
+          "x": 24,
+          "y": 98
+        },
+        {
+          "text": "}",
+          "x": 24,
+          "y": 138
+        }
+      ]
+    },
+    {
+      "id": "code_05",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "SELECT id, price",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "FROM invoices",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "WHERE price >= 19.90;",
+          "x": 24,
+          "y": 98
+        }
+      ]
+    },
+    {
+      "id": "code_06",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "if (ready && value != 0) {",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "  output = value * 2;",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "}",
+          "x": 24,
+          "y": 98
+        }
+      ]
+    },
+    {
+      "id": "code_07",
+      "split": "development",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "path=\"./notes.txt\"",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "printf \"%s\\n\" \"$path\"",
+          "x": 24,
+          "y": 58
+        }
+      ]
+    },
+    {
+      "id": "code_08",
+      "split": "heldout",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "while remaining > 0:",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "  remaining -= 1",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "  print(remaining)",
+          "x": 24,
+          "y": 98
+        }
+      ]
+    },
+    {
+      "id": "code_09",
+      "split": "heldout",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "public int Add(int a, int b) {",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "    return a + b;",
+          "x": 24,
+          "y": 58
+        },
+        {
+          "text": "}",
+          "x": 24,
+          "y": 98
+        }
+      ]
+    },
+    {
+      "id": "code_10",
+      "split": "heldout",
+      "category": "code",
+      "mode": "code",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 850,
+      "height": 270,
+      "lines": [
+        {
+          "text": "const ratio: number = 3.25;",
+          "x": 24,
+          "y": 18
+        },
+        {
+          "text": "export default { ratio };",
+          "x": 24,
+          "y": 58
+        }
+      ]
+    },
+    {
+      "id": "prose_01",
+      "split": "development",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 21,
+      "theme": "light",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "A ação começa às oito horas.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Você recebeu três mensagens novas.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_02",
+      "split": "development",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 22,
+      "theme": "dark",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "O café custa R$ 12,50.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Confirme o número do pedido: 8042.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_03",
+      "split": "development",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 23,
+      "theme": "light",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Informação pública e tradução local.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Nenhum arquivo precisa sair do computador.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_04",
+      "split": "development",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Leia cada palavra com atenção.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Acentos: órgão, saúde, açúcar, avó.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_05",
+      "split": "development",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 22,
+      "theme": "light",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Uma página contém título e parágrafo.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Preserve a ordem original do texto.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_06",
+      "split": "development",
+      "category": "prose_en",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 23,
+      "theme": "dark",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "The meeting starts at 09:45.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Please bring invoice number 721.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_07",
+      "split": "development",
+      "category": "prose_en",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 21,
+      "theme": "light",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "An offline reader preserves the source.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Do not replace unusual words silently.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_08",
+      "split": "development",
+      "category": "prose_en",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 22,
+      "theme": "dark",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Price: $23.80; quantity: 12.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Payment received on November 8.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_09",
+      "split": "heldout",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 23,
+      "theme": "light",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Não altere aspas: “sim”, ‘não’.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "O resultado pertence ao usuário.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_10",
+      "split": "heldout",
+      "category": "prose_en",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Each line has different punctuation!",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "What changed between versions?",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_11",
+      "split": "heldout",
+      "category": "prose_en",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 22,
+      "theme": "light",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "The blue folder contains seven reports.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Read the final paragraph carefully.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "prose_12",
+      "split": "heldout",
+      "category": "prose_pt",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 23,
+      "theme": "dark",
+      "width": 900,
+      "height": 180,
+      "lines": [
+        {
+          "text": "Amanhã haverá reunião às 14h30.",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Endereço: Rua São João, 256.",
+          "x": 24,
+          "y": 68
+        }
+      ]
+    },
+    {
+      "id": "ui_01",
+      "split": "development",
+      "category": "ui_or_table",
+      "mode": "text",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 820,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Configurações",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Idioma: Português",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Salvar alterações",
+          "x": 24,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_02",
+      "split": "development",
+      "category": "ui_or_table",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 22,
+      "theme": "dark",
+      "width": 820,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Account details",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Name: Ana Silva",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Last login: 08:32",
+          "x": 24,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_03",
+      "split": "development",
+      "category": "ui_or_table",
+      "mode": "text",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 820,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Pesquisar arquivos",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Documentos recentes",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Abrir pasta",
+          "x": 24,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_04",
+      "split": "development",
+      "category": "columns",
+      "mode": "auto",
+      "font": "sans",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 900,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Task status",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Active: 27",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Updated: 11:20",
+          "x": 24,
+          "y": 120
+        },
+        {
+          "text": "Owner details",
+          "x": 480,
+          "y": 20
+        },
+        {
+          "text": "Team: Local",
+          "x": 480,
+          "y": 70
+        },
+        {
+          "text": "User: Alice",
+          "x": 480,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_05",
+      "split": "development",
+      "category": "ui_or_table",
+      "mode": "text",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 820,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Produto | Qtde | Valor",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Teclado | 2 | R$ 80",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Mouse | 1 | R$ 45",
+          "x": 24,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_06",
+      "split": "heldout",
+      "category": "ui_or_table",
+      "mode": "text",
+      "font": "sans",
+      "font_size": 22,
+      "theme": "dark",
+      "width": 820,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Name | Score | Rank",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Alice | 91 | 2",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Bruno | 95 | 1",
+          "x": 24,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_07",
+      "split": "heldout",
+      "category": "ui_or_table",
+      "mode": "text",
+      "font": "mono",
+      "font_size": 22,
+      "theme": "light",
+      "width": 820,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Notificações",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Sem conexão com a rede",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Tentar novamente",
+          "x": 24,
+          "y": 120
+        }
+      ]
+    },
+    {
+      "id": "ui_08",
+      "split": "heldout",
+      "category": "columns",
+      "mode": "auto",
+      "font": "sans",
+      "font_size": 21,
+      "theme": "dark",
+      "width": 900,
+      "height": 220,
+      "lines": [
+        {
+          "text": "Preferences",
+          "x": 24,
+          "y": 20
+        },
+        {
+          "text": "Updates: off",
+          "x": 24,
+          "y": 70
+        },
+        {
+          "text": "Language: English",
+          "x": 24,
+          "y": 120
+        },
+        {
+          "text": "Storage",
+          "x": 480,
+          "y": 20
+        },
+        {
+          "text": "Used: 72 GB",
+          "x": 480,
+          "y": 70
+        },
+        {
+          "text": "Free: 128 GB",
+          "x": 480,
+          "y": 120
+        }
+      ]
+    }
+  ]
+}

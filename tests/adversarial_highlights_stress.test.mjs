@@ -321,7 +321,7 @@ test("HL-3: Words with Infinite coordinates (+Infinity, -Infinity) handled witho
   ]));
 });
 
-test("HL-4: Vertical margin fold artifacts (height > 3.2 * width with length <= 3) are filtered out", () => {
+test("HL-4: Backend-approved tall words remain visible regardless of aspect ratio", () => {
   const env = setupHighlightEnvironment();
 
   const ocrWithMarginArtifacts = {
@@ -347,13 +347,13 @@ test("HL-4: Vertical margin fold artifacts (height > 3.2 * width with length <= 
   const pills = env.highlightsContainer.querySelectorAll(".crop-word-highlight");
 
   const texts = pills.map((p) => p.title);
-  assert.ok(!texts.some((t) => t.includes('"RT,"')), "Margin artifact 'RT,' must be filtered");
-  assert.ok(!texts.some((t) => t.includes('"ME"')), "Margin artifact 'ME' must be filtered");
+  assert.ok(texts.some((t) => t.includes('"RT,"')), "Recognized 'RT,' remains selectable");
+  assert.ok(texts.some((t) => t.includes('"ME"')), "Recognized 'ME' remains selectable");
   assert.ok(texts.some((t) => t.includes('"EDITORIAL"')), "'EDITORIAL' must be retained");
   assert.ok(texts.some((t) => t.includes('"SECTION"')), "'SECTION' must be retained");
 });
 
-test("HL-5: Sub-3px printer dust and scanner noise (width < 3 or height < 3) are filtered out", () => {
+test("HL-5: Narrow punctuation remains visible at sub-3px dimensions", () => {
   const env = setupHighlightEnvironment();
 
   const ocrDust = {
@@ -372,11 +372,11 @@ test("HL-5: Sub-3px printer dust and scanner noise (width < 3 or height < 3) are
 
   env.renderTextHighlights(ocrDust, 400, 300);
   const pills = env.highlightsContainer.querySelectorAll(".crop-word-highlight");
-  assert.equal(pills.length, 1, "Only the valid word must be rendered");
-  assert.ok(pills[0].title.includes("Valid"));
+  assert.equal(pills.length, 4, "All recognized punctuation remains selectable");
+  assert.ok(pills[3].title.includes("Valid"));
 });
 
-test("HL-6: Edge border touching artifacts (x <= 2 or y <= 2 with height > 30, width < 15) are filtered out", () => {
+test("HL-6: Backend-approved words at crop edges remain visible", () => {
   const env = setupHighlightEnvironment();
 
   const ocrBorderArtifacts = {
@@ -397,8 +397,8 @@ test("HL-6: Edge border touching artifacts (x <= 2 or y <= 2 with height > 30, w
 
   env.renderTextHighlights(ocrBorderArtifacts, 400, 300);
   const pills = env.highlightsContainer.querySelectorAll(".crop-word-highlight");
-  assert.equal(pills.length, 1, "Edge border boxes must be discarded");
-  assert.ok(pills[0].title.includes("News"));
+  assert.equal(pills.length, 3, "Recognized edge words remain selectable");
+  assert.ok(pills[2].title.includes("News"));
 });
 
 test("HL-7: Massive overlapping bounding boxes are rendered and selectable without crashing", () => {
@@ -449,12 +449,12 @@ test("HL-8: Extreme aspect ratios (ultra-wide ribbon vs ultra-tall column) rende
   assert.equal(pills.length, 2);
 
   // Wide pill
-  assert.equal(pills[0].style.width, "5002px"); // 5000 + 2 pad
-  assert.equal(pills[0].style.height, "22px");
+  assert.equal(pills[0].style.width, "5000px"); // Preserve measured geometry
+  assert.equal(pills[0].style.height, "20px");
 
   // Tall pill
-  assert.equal(pills[1].style.width, "27px");
-  assert.equal(pills[1].style.height, "4002px");
+  assert.equal(pills[1].style.width, "25px");
+  assert.equal(pills[1].style.height, "4000px");
 });
 
 test("HL-9: Multi-column overlapping boxes with conflicting baselines preserve structured text", () => {
@@ -554,7 +554,7 @@ test("HL-12: Single narrow characters ('I', '1', '!', 'l', '[', ']', '|') with a
   assert.equal(pills.length, 9, "All 9 tokens must be rendered as pills");
 });
 
-test("HL-13: Edge border artifacts on right and bottom borders are filtered out", () => {
+test("HL-13: Backend-approved right and bottom edge words remain visible", () => {
   const env = setupHighlightEnvironment();
 
   const ocrBorderRightBottom = {
@@ -578,9 +578,9 @@ test("HL-13: Edge border artifacts on right and bottom borders are filtered out"
 
   const texts = pills.map((p) => p.title);
   assert.ok(texts.some((t) => t.includes('"Normal"')), "'Normal' must be rendered");
-  assert.ok(!texts.some((t) => t.includes('"RT_EDGE"')), "Right border artifact must be filtered");
-  assert.ok(!texts.some((t) => t.includes('"BOT_EDGE"')), "Bottom border artifact must be filtered");
-  assert.equal(pills.length, 1, "Only normal word rendered");
+  assert.ok(texts.some((t) => t.includes('"RT_EDGE"')), "Recognized right edge word remains selectable");
+  assert.ok(texts.some((t) => t.includes('"BOT_EDGE"')), "Recognized bottom edge word remains selectable");
+  assert.equal(pills.length, 3, "All backend-approved words rendered");
 });
 
 test("HL-14: Narrow code keywords with colons and operators with aspect ratio > 3.2 are preserved", () => {

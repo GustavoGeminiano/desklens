@@ -24,6 +24,7 @@ ANTIGRAVITY_HANDOVER.md
 benchmark-results*/
 __pycache__/
 *.pyc
+/build/
 
 
 DESKLENS_PROJECT_HISTORY.md

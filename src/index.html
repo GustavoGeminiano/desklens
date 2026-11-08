@@ -104,12 +104,26 @@
             <button id="translate-action-btn" class="action-btn secondary" title="Translate on screen (Portuguese)">
               <span>🌐</span> Translate
             </button>
+            <select id="ocr-mode-select" class="lang-select" aria-label="Recognition mode" title="Recognition mode">
+              <option value="auto">Auto</option>
+              <option value="text">Text</option>
+              <option value="code">Code</option>
+            </select>
             <button id="ocr-action-btn" class="action-btn secondary" title="Extract text via OCR">
               <span>📝</span> Copy Text
             </button>
             <button id="clear-action-btn" class="action-btn ghost" title="Clear selection">
               <span>🔄</span> Clear
             </button>
+            <div class="ocr-feedback">
+              <span id="ocr-status" role="status" aria-live="polite"></span>
+              <button id="ocr-retry-btn" class="action-btn secondary">Retry</button>
+              <details id="ocr-preview">
+                <summary>Review recognized text</summary>
+                <textarea id="ocr-preview-text" readonly aria-label="Recognized text preview" rows="4"></textarea>
+                <button id="ocr-copy-anyway-btn" class="action-btn secondary">Copy anyway</button>
+              </details>
+            </div>
           </div>
         </div>
       </div>

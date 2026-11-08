@@ -238,7 +238,8 @@ function setupEnvironment(options = {}) {
   };
 
   const mainJsPath = path.resolve("src/main.js");
-  const code = fs.readFileSync(mainJsPath, "utf-8");
+  // These language unit scenarios start with an already selected crop.
+  const code = fs.readFileSync(mainJsPath, "utf-8").replace("let currentCrop = null;", 'let currentCrop = {crop_id: 1, data_url: "data:image/png;base64,test", image_width:100, image_height:100};');
 
   const context = vm.createContext(sandbox);
   vm.runInContext(code, context);

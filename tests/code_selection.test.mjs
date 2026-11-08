@@ -255,7 +255,7 @@ test("CODE-5: Single-character items estimate char width and spacing without NaN
   assert.equal(result, "x = 1");
 });
 
-test("CODE-6: renderInteractivePills renders pills with pixel-aligned coordinates", () => {
+test("CODE-6: renderInteractivePills preserves fractional canonical coordinates", () => {
   const { sandbox, elements } = setupEnvironment();
   const renderInteractivePills = sandbox.window.renderInteractivePills;
 
@@ -270,10 +270,10 @@ test("CODE-6: renderInteractivePills renders pills with pixel-aligned coordinate
   assert.equal(container.children.length, 2);
 
   const p0 = container.children[0];
-  assert.equal(p0.style.left, "19px"); // Math.round(20.4) - 1 = 19
-  assert.equal(p0.style.top, "29px");  // Math.round(30.2) - 1 = 29
-  assert.equal(p0.style.width, "38px"); // Math.round(35.8) + 2 = 38
-  assert.equal(p0.style.height, "22px"); // 20 + 2 = 22
+  assert.equal(p0.style.left, "20.4px"); // Preserve the canonical coordinates
+  assert.equal(p0.style.top, "30.2px");
+  assert.equal(p0.style.width, "35.8px");
+  assert.equal(p0.style.height, "20px");
   assert.equal(p0.dataset.index, "0");
   assert.equal(p0.dataset.line, "0");
 });

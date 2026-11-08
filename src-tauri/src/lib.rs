@@ -12,6 +12,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub mod ocr;
+pub mod ocr_service;
 pub mod translation;
 use translation::translate_on_screen;
 
@@ -24,8 +25,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// Application state storing the latest captured raw screenshot and active crop in memory.
 pub struct AppState {
     pub current_screenshot: Mutex<Option<RgbaImage>>,
-    pub latest_crop_image: Mutex<Option<RgbaImage>>,
-    pub latest_crop: Mutex<Option<String>>,
+    pub ocr: std::sync::Arc<ocr_service::OcrService>,
 }
 
 /// Linux display server and desktop session detection helper.
@@ -110,14 +110,7 @@ fn encode_png_data_url(image: &RgbaImage) -> Result<String, String> {
 
 /// Saves the latest cropped image to a temporary file and returns its path.
 fn write_crop_to_temp_file(state: &tauri::State<'_, AppState>) -> Result<PathBuf, String> {
-    let guard = state
-        .latest_crop_image
-        .lock()
-        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
-
-    let image = guard
-        .as_ref()
-        .ok_or_else(|| "No cropped image available".to_string())?;
+    let image = state.ocr.current_image()?;
 
     let temp_path = std::env::temp_dir().join("desklens_latest_crop.png");
     image
@@ -303,6 +296,7 @@ async fn trigger_capture(app_handle: tauri::AppHandle) -> Result<String, String>
     if let Some(state) = app_handle.try_state::<AppState>() {
         if let Ok(mut lock) = state.current_screenshot.lock() {
             *lock = Some(raw_image);
+            state.ocr.clear();
         }
     }
 
@@ -320,7 +314,8 @@ async fn crop_selection(
     height: u32,
     screen_width: u32,
     screen_height: u32,
-) -> Result<String, String> {
+) -> Result<ocr_service::CropInfo, String> {
+    let crop_id = state.ocr.reserve_crop();
     let cropped = {
         let guard = state
             .current_screenshot
@@ -369,28 +364,18 @@ async fn crop_selection(
 
     let data_url = encode_png_data_url(&cropped)?;
 
-    // Cache both raw cropped image and data URL in state
-    if let Ok(mut img_lock) = state.latest_crop_image.lock() {
-        *img_lock = Some(cropped);
-    }
-    if let Ok(mut crop_lock) = state.latest_crop.lock() {
-        *crop_lock = Some(data_url.clone());
-    }
+    let info = state.ocr.finish_crop(&crop_id, cropped, data_url.clone())?;
 
     // Broadcast globally so all windows receive the new payload
     let _ = app_handle.emit("load-search-payload", &data_url);
 
-    Ok(data_url)
+    Ok(info)
 }
 
 /// Retrieves the latest cropped image data URL from state.
 #[tauri::command]
 async fn get_latest_crop(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
-    let guard = state
-        .latest_crop
-        .lock()
-        .map_err(|e| format!("Failed to lock crop state: {e}"))?;
-    Ok(guard.clone())
+    Ok(state.ocr.current_info().map(|info| info.data_url))
 }
 
 /// Helper to ensure the "results" side-panel window exists and is shown.
@@ -429,18 +414,9 @@ async fn open_visual_search(
         let _ = main_win.hide();
     }
 
-    // 2. Cache crop payload in state if provided
-    let mut payload_to_send: Option<String> = None;
-    if let Some(state) = app_handle.try_state::<AppState>() {
-        if let Ok(mut crop_lock) = state.latest_crop.lock() {
-            if let Some(url) = crop_data_url {
-                *crop_lock = Some(url.clone());
-                payload_to_send = Some(url);
-            } else {
-                payload_to_send = crop_lock.clone();
-            }
-        }
-    }
+    // The search payload does not replace the immutable OCR session.
+    let payload_to_send = crop_data_url.or_else(|| app_handle.try_state::<AppState>()
+        .and_then(|state| state.ocr.current_info().map(|info| info.data_url)));
 
     // 3. Ensure Results side-panel exists, unminimize if minimized, bring to front, and broadcast payload
     let results_win = ensure_results_window(&app_handle)?;
@@ -701,14 +677,7 @@ async fn copy_crop_to_clipboard(state: tauri::State<'_, AppState>) -> Result<(),
 #[tauri::command]
 async fn save_crop_to_disk(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let file_path = {
-        let guard = state
-            .latest_crop_image
-            .lock()
-            .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
-
-        let image = guard
-            .as_ref()
-            .ok_or_else(|| "No cropped image available to save".to_string())?;
+        let image = state.ocr.current_image()?;
 
         let base_dir = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
@@ -837,55 +806,37 @@ pub fn copy_plain_text_to_clipboard(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// SPRINT 4: Extracts text and bounding boxes from the latest cropped image using native OS OCR.
+/// One shared canonical OCR document per immutable selection and mode.
 #[tauri::command]
 async fn extract_text_from_crop(
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-) -> Result<ocr::OcrResult, String> {
-    let guard = state
-        .latest_crop_image
-        .lock()
-        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
-
-    let image = guard
-        .as_ref()
-        .ok_or_else(|| "No cropped image available for OCR".to_string())?;
-
-    let result = ocr::extract_text_native(image)?;
-    println!(
-        "📝 [DeskLens] OCR extracted {} lines ({} words)",
-        result.lines.len(),
-        result.word_count
-    );
-    Ok(result)
+    crop_id: String,
+    mode: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let service = state.ocr.clone();
+    let resources = app_handle.path().resource_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || service.recognize(&crop_id, mode.as_deref().unwrap_or("auto"), resources))
+        .await.map_err(|e| e.to_string())?
 }
 
-/// SPRINT 4: Extracts text from the crop and immediately copies it to the system clipboard.
 #[tauri::command]
-async fn copy_text_from_crop(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let guard = state
-        .latest_crop_image
-        .lock()
-        .map_err(|e| format!("Failed to lock crop image state: {e}"))?;
-
-    let image = guard
-        .as_ref()
-        .ok_or_else(|| "No cropped image available for OCR".to_string())?;
-
-    let result = ocr::extract_text_native(image)?;
-    // Trim leading/trailing blank lines, but preserve leading indentation on lines
-    let trimmed = result.full_text.trim_matches(|c| c == '\r' || c == '\n');
-    let text = trimmed.trim_end().to_string();
-
-    if !text.is_empty() {
-        copy_plain_text_to_clipboard(&text)?;
-        println!(
-            "📋 [DeskLens] OCR text copied to clipboard: '{}'",
-            text.chars().take(40).collect::<String>()
-        );
-    }
-
+async fn copy_text_from_crop(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    crop_id: String,
+    mode: Option<String>,
+) -> Result<String, String> {
+    let result = extract_text_from_crop(app_handle, state.clone(), crop_id.clone(), mode).await?;
+    if !state.ocr.is_current(&crop_id) { return Err("This selection is no longer active".into()); }
+    let text = result["full_text"].as_str().ok_or("Invalid OCR document")?.to_string();
+    if !text.is_empty() { copy_plain_text_to_clipboard(&text)?; }
     Ok(text)
+}
+
+#[tauri::command]
+async fn clear_crop_session(state: tauri::State<'_, AppState>, crop_id: String) -> Result<(), String> {
+    state.ocr.clear_if_current(&crop_id); Ok(())
 }
 
 /// Copies arbitrary plain text directly to the native OS clipboard.
@@ -946,6 +897,7 @@ fn capture_and_display_overlay(app_handle: &tauri::AppHandle) {
                     if let Some(state) = app_handle.try_state::<AppState>() {
                         if let Ok(mut lock) = state.current_screenshot.lock() {
                             *lock = Some(raw_image);
+            state.ocr.clear();
                         }
                     }
 
@@ -980,14 +932,20 @@ async fn close_results_window(app_handle: tauri::AppHandle) -> Result<(), String
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let arguments: Vec<String> = std::env::args().collect();
+    let smoke = arguments.iter().position(|a| a == "--ocr-smoke").map(|index| {
+        (arguments.get(index + 1).expect("--ocr-smoke requires an input PNG").clone(),
+         arguments.get(index + 2).expect("--ocr-smoke requires an output JSON").clone())
+    });
+    let mut context = tauri::generate_context!();
+    if smoke.is_some() { context.config_mut().app.windows.clear(); }
     let display_info = LinuxDisplayInfo::detect();
     display_info.log_startup();
 
     tauri::Builder::default()
         .manage(AppState {
             current_screenshot: Mutex::new(None),
-            latest_crop_image: Mutex::new(None),
-            latest_crop: Mutex::new(None),
+            ocr: std::sync::Arc::new(ocr_service::OcrService::default()),
         })
         .on_window_event(|window, event| {
             // Prevent "main" and "results" windows from being destroyed when clicking the OS 'X' button
@@ -1013,10 +971,31 @@ pub fn run() {
             close_results_window,
             extract_text_from_crop,
             copy_text_from_crop,
+            clear_crop_session,
             copy_text_to_clipboard,
             translate_on_screen
         ])
         .setup(move |app| {
+            if let Some((input, output)) = smoke.clone() {
+                let handle = app.handle().clone();
+                let resources = handle.path().resource_dir()?;
+                let service = handle.state::<AppState>().ocr.clone();
+                std::thread::spawn(move || {
+                    let result = (|| -> Result<serde_json::Value, String> {
+                        let image = image::open(&input).map_err(|e| e.to_string())?.to_rgba8();
+                        let info = service.set_crop(image, String::new());
+                        let first = service.recognize(&info.crop_id, "auto", resources.clone())?;
+                        let second = service.recognize(&info.crop_id, "auto", resources.clone())?;
+                        if first != second { return Err("Session cache changed its canonical result".into()); }
+                        Ok(serde_json::json!({"ok":true,"resource_dir":resources,"result":first,"cache_reused":true}))
+                    })();
+                    let code = if result.is_ok() { 0 } else { 1 };
+                    let report = result.unwrap_or_else(|error| serde_json::json!({"ok":false,"error":error}));
+                    let write = std::fs::write(output, serde_json::to_vec_pretty(&report).unwrap());
+                    handle.exit(if write.is_ok() { code } else { 2 });
+                });
+                return Ok(());
+            }
             #[cfg(target_os = "linux")]
             start_ipc_listener(app.handle().clone());
 
@@ -1146,6 +1125,6 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("Error while running DeskLens Tauri application");
 }

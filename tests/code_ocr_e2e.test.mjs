@@ -317,8 +317,8 @@ test("T1.1.2: Keyword 'for' - Numeric range loop 'for i in range(10):'", () => {
   env.renderTextHighlights(res, 800, 600);
   const pills = env.highlightsContainer.children;
   assert.equal(pills.length, 4);
-  assert.equal(pills[0].style.left, "19px"); // Math.round(20) - 1
-  assert.equal(pills[0].style.width, "30px"); // Math.round(28) + 2
+  assert.equal(pills[0].style.left, "20px"); // Preserve measured geometry
+  assert.equal(pills[0].style.width, "28px"); // Preserve measured geometry
 });
 
 test("T1.1.3: Keyword 'for' - List comprehension '[x * 2 for x in data]'", () => {
@@ -927,7 +927,7 @@ test("T1.8.5: Operator '==' - Bounding box width matches 2-character width witho
   ]);
   env.renderTextHighlights(res, 800, 600);
   const eqPill = env.highlightsContainer.children[1];
-  assert.equal(eqPill.style.width, "20px"); // 18 + 2
+  assert.equal(eqPill.style.width, "18px"); // Preserve measured geometry
 });
 
 // --- 1.9 Operator: '!=' ---
@@ -1005,7 +1005,7 @@ test("T1.9.5: Operator '!=' - Exact coordinate placement without drift", () => {
     },
   ]);
   env.renderTextHighlights(res, 800, 600);
-  assert.equal(env.highlightsContainer.children[1].style.left, "24px");
+  assert.equal(env.highlightsContainer.children[1].style.left, "25px");
 });
 
 // --- 1.10 Operator: '<=' ---
@@ -1144,7 +1144,7 @@ test("T1.11.4: Operator '>=' - Bounding box containment", () => {
     },
   ]);
   env.renderTextHighlights(res, 800, 600);
-  assert.equal(env.highlightsContainer.children[1].style.width, "20px");
+  assert.equal(env.highlightsContainer.children[1].style.width, "18px");
 });
 
 test("T1.11.5: Operator '>=' - Single pill selection returns '>=' directly", () => {
@@ -1208,7 +1208,7 @@ test("T1.12.4: Operator '%' - Standalone '%' operator pill styling", () => {
   ]);
   env.renderTextHighlights(res, 800, 600);
   assert.equal(env.highlightsContainer.children.length, 1);
-  assert.equal(env.highlightsContainer.children[0].style.width, "14px"); // 12 + 2
+  assert.equal(env.highlightsContainer.children[0].style.width, "12px"); // Preserve measured geometry
 });
 
 test("T1.12.5: Operator '%' - Drag select across 'i % 2 == 0' line", () => {
@@ -2216,8 +2216,8 @@ test("T2.5.1: Editor Themes - Dark theme crop scales and renders crisp pills", (
   env.renderTextHighlights(res, 800, 600);
   const pill = env.highlightsContainer.children[0];
   assert.ok(pill.classList.contains("crop-word-highlight"));
-  assert.equal(pill.style.left, "19px");
-  assert.equal(pill.style.top, "19px");
+  assert.equal(pill.style.left, "20px");
+  assert.equal(pill.style.top, "20px");
 });
 
 test("T2.5.2: Editor Themes - Light theme crop scales identically", () => {
@@ -2253,7 +2253,7 @@ test("T2.5.3: Editor Themes - Coordinate scaling from high-resolution image crop
   assert.ok(pill);
 });
 
-test("T2.5.4: Editor Themes - Edge border touching noise rejected on dark and light themes", () => {
+test("T2.5.4: Editor Themes - Backend-approved edge symbols remain selectable", () => {
   const env = setupCodeOcrEnvironment();
   const res = buildOcrResult([
     {
@@ -2266,11 +2266,11 @@ test("T2.5.4: Editor Themes - Edge border touching noise rejected on dark and li
     },
   ]);
   env.renderTextHighlights(res, 800, 600);
-  assert.equal(env.highlightsContainer.children.length, 1);
-  assert.ok(env.highlightsContainer.children[0].title.includes('"valid_code"'));
+  assert.equal(env.highlightsContainer.children.length, 2);
+  assert.ok(env.highlightsContainer.children[1].title.includes('"valid_code"'));
 });
 
-test("T2.5.5: Editor Themes - Sub-3px scanner dust rejected across themes", () => {
+test("T2.5.5: Editor Themes - Backend-approved tiny punctuation remains selectable", () => {
   const env = setupCodeOcrEnvironment();
   const res = buildOcrResult([
     {
@@ -2282,7 +2282,7 @@ test("T2.5.5: Editor Themes - Sub-3px scanner dust rejected across themes", () =
     },
   ]);
   env.renderTextHighlights(res, 800, 600);
-  assert.equal(env.highlightsContainer.children.length, 1);
+  assert.equal(env.highlightsContainer.children.length, 2);
 });
 
 // =============================================================================
