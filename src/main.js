@@ -679,7 +679,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       width: Math.round(rect.w), height: Math.round(rect.h),
       screenWidth: window.innerWidth, screenHeight: window.innerHeight,
     }).then((crop) => {
-      if (!isCurrent(generation)) return null;
+      if (!isCurrent(generation)) {
+        window.__TAURI__.core.invoke("clear_crop_session", { cropId: crop.crop_id }).catch(() => {});
+        return null;
+      }
       currentCrop = crop;
       currentCropDataUrl = crop.data_url;
       if (cropPreviewThumb) cropPreviewThumb.src = crop.data_url;

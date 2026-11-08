@@ -34,9 +34,15 @@ class NativeProcessTests(unittest.TestCase):
             state=Path(f'/proc/{pid}/stat')
             # A terminated adopted child can briefly remain a zombie until init reaps it.
             deadline=time.monotonic()+2
-            while state.exists() and state.read_text().split()[2] != 'Z' and time.monotonic()<deadline:
+            def terminated():
+                try:
+                    return state.read_text().split()[2] == 'Z'
+                except FileNotFoundError:
+                    # init may reap the child between an existence check and read.
+                    return True
+            while not terminated() and time.monotonic()<deadline:
                 time.sleep(.02)
-            self.assertTrue(not state.exists() or state.read_text().split()[2] == 'Z','OCR descendant survived process-group cleanup')
+            self.assertTrue(terminated(),'OCR descendant survived process-group cleanup')
 
 
 if __name__ == '__main__':

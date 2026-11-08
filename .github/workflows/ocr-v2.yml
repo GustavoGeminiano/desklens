@@ -5,9 +5,17 @@ on:
     branches: [main]
     paths:
       - 'tools/ocr_worker/**'
-      - 'src-tauri/src/ocr_service.rs'
+      - 'src-tauri/src/**'
+      - 'src-tauri/Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/ocr_benchmark/test*.py'
       - 'src-tauri/tauri.ocr.conf.json'
       - '.github/workflows/ocr-v2.yml'
+concurrency:
+  group: ocr-v2-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

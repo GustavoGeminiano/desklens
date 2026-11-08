@@ -110,6 +110,7 @@ test('out-of-order crop responses cannot replace the most recent selection',asyn
   b.resolve({crop_id:2,data_url:'new-image',image_width:400,image_height:200});await second;
   a.resolve({crop_id:1,data_url:'old-image',image_width:400,image_height:200});await first;await flush();
   assert.equal(env.el('crop-preview-thumb').src,'new-image');
+  assert.ok(env.calls.some(x=>x.name==='clear_crop_session' && x.args.cropId===1));
   assert.equal(env.el('ocr-preview-text').value,'new crop');
   assert.equal(env.calls.filter(x=>x.name==='extract_text_from_crop').length,1);
 });

@@ -119,12 +119,11 @@ impl OcrService {
             image
                 .save_with_format(temp.path(), image::ImageFormat::Png)
                 .map_err(|e| e.to_string())?;
-            self.worker.lock().map_err(|e| e.to_string())?.recognize(
-                &resource_dir,
-                temp.path(),
-                id,
-                mode,
-            )
+            let mut worker = self.worker.lock().map_err(|e| e.to_string())?;
+            if !self.is_current(id) {
+                return Err("This selection is no longer active".into());
+            }
+            worker.recognize(&resource_dir, temp.path(), id, mode)
         })
     }
     fn recognize_with<F>(&self, id: &str, mode: &str, infer: F) -> Result<Value, String>
