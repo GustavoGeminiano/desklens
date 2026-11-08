@@ -1034,33 +1034,22 @@ window.addEventListener("DOMContentLoaded", async () => {
         if (!current()) return;
         const flatBoxes = [];
 
-        if (ocrResult?.boxes && ocrResult.boxes.length > 0) {
-          for (const b of ocrResult.boxes) {
-            if (b.text && b.width && b.height) {
-              flatBoxes.push({
-                text: b.text,
-                x: b.x,
-                y: b.y,
-                width: b.width,
-                height: b.height,
-              });
-            }
+        // Translation groups visual lines into paragraphs on the backend.
+        // Word boxes belong to selection/highlights, not translation requests.
+        const translationUnits = ocrResult?.lines?.length
+          ? ocrResult.lines
+          : (ocrResult?.paragraphs?.length ? ocrResult.paragraphs : ocrResult?.boxes || []);
+        for (let unit of translationUnits) {
+          if (!(unit.width > 0 && unit.height > 0) && unit.words?.length) {
+            const x = Math.min(...unit.words.map(word => word.x));
+            const y = Math.min(...unit.words.map(word => word.y));
+            unit = { ...unit, x, y,
+              width: Math.max(...unit.words.map(word => word.x + word.width)) - x,
+              height: Math.max(...unit.words.map(word => word.y + word.height)) - y };
           }
-        } else if (ocrResult?.lines) {
-          for (const line of ocrResult.lines) {
-            if (line.words) {
-              for (const word of line.words) {
-                if (word.text && word.width && word.height) {
-                  flatBoxes.push({
-                    text: word.text,
-                    x: word.x,
-                    y: word.y,
-                    width: word.width,
-                    height: word.height,
-                  });
-                }
-              }
-            }
+          if (unit.text && unit.width > 0 && unit.height > 0) {
+            flatBoxes.push({ text: unit.text, x: unit.x, y: unit.y,
+              width: unit.width, height: unit.height });
           }
         }
 

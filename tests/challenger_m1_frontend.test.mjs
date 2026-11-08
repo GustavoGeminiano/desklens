@@ -130,3 +130,22 @@ test('language change invalidates an in-flight translation without redoing OCR',
   assert.equal(env.el('capture-container').children[0].textContent,'new language');
   assert.equal(env.calls.filter(x=>x.name==='extract_text_from_crop').length,1);
 });
+
+
+test('translation sends complete visual lines instead of one box per word', async () => {
+  const lines = ['Industry pioneers build smarter AI agents.', 'Designed for enterprise applications.'];
+  const doc = result(lines.join('\n'));
+  doc.lines = lines.map((text, index) => ({text, x: 10, y: 10 + index * 22, width: 350, height: 18,
+    words: text.split(' ').map((text, word) => ({text, x: 10 + word * 45, y: 10 + index * 22, width: 40, height: 18}))}));
+  delete doc.boxes;
+  const env = environment(async () => doc, async ({boxes}) => ({boxes: [{...boxes[0], height: 40, translated_text: 'Pioneiros criam agentes de IA mais inteligentes para empresas.'}]}));
+  await env.select();
+  await env.el('translate-action-btn').fire('click');
+  const request = env.calls.find(call => call.name === 'translate_on_screen');
+  assert.equal(request.args.boxes.length, 2);
+  assert.equal(request.args.boxes[0].text, lines[0]);
+  assert.equal(request.args.boxes[1].text, lines[1]);
+  const overlays = env.el('capture-container').children;
+  assert.equal(overlays.length, 1);
+  assert.equal(overlays[0].textContent, 'Pioneiros criam agentes de IA mais inteligentes para empresas.');
+});
