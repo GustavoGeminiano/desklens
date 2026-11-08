@@ -596,6 +596,9 @@ async fn search_google_lens(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
+    // Snapshot the selection before view-mode listeners clear its session.
+    let temp_path = write_crop_to_temp_file(&state)?;
+
     // 1. Immediately hide the fullscreen overlay so the user never has to press ESC
     //    and the always-on-top window never blocks the browser from taking focus.
     if let Some(window) = app_handle.get_webview_window("main") {
@@ -608,7 +611,6 @@ async fn search_google_lens(
     }
     let _ = app_handle.emit("view-mode", "settings");
 
-    let temp_path = write_crop_to_temp_file(&state)?;
     let _ = copy_file_to_os_clipboard(&temp_path);
 
     println!("🌐 [DeskLens] Uploading cropped slice to raw-image visual search CDN...");

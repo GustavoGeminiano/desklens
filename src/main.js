@@ -862,15 +862,14 @@ window.addEventListener("DOMContentLoaded", async () => {
 
         if (!isCurrent(generation) || !currentCrop) return;
 
-        // Hide the fullscreen overlay immediately on click so the user never has to press ESC
-        // and the always-on-top overlay never blocks the browser window from taking focus.
-        await hideOverlay();
-
+        // The backend snapshots the crop before hiding the overlay. Hiding here
+        // clears the session before Search Image can read it.
         if (window.__TAURI__?.core?.invoke) {
           await window.__TAURI__.core.invoke("search_google_lens");
         }
       } catch (err) {
         console.error("Failed to open Google Lens:", err);
+        if (isCurrent(generation)) setOcrStatus(`Image search failed: ${String(err)}`, "error");
       } finally {
         if (isCurrent(generation)) searchActionBtn.innerHTML = originalHtml;
       }

@@ -149,3 +149,15 @@ test('translation sends complete visual lines instead of one box per word', asyn
   assert.equal(overlays.length, 1);
   assert.equal(overlays[0].textContent, 'Pioneiros criam agentes de IA mais inteligentes para empresas.');
 });
+
+
+test('Search Image retains the selected crop until the backend snapshots it', async () => {
+  const env = environment(async () => result());
+  await env.select();
+  const start = env.calls.length;
+  await env.el('search-action-btn').fire('click');
+  const actions = env.calls.slice(start);
+  assert.equal(actions.filter(call => call.name === 'search_google_lens').length, 1);
+  assert.equal(actions.filter(call => call.name === 'hide_overlay' || call.name === 'clear_crop_session').length, 0,
+    'Hiding or clearing before the backend handles search destroys its input image');
+});
