@@ -93,3 +93,12 @@ The experimental CI extracts the .deb or installs NSIS, blocks network for OCR,
 and uploads the installers and reports. This is a backend packaging smoke;
 frontend behavior is covered by the JavaScript regression suite, not a claim
 of automated visual end-to-end desktop coverage.
+
+Low-confidence full lines have a bounded second look: up to three lines per
+image, two pixel transforms per line (cubic enlargement and Otsu binarization).
+Only different glyph output with a >0.02 score increase within the same recognizer
+can replace the original. Agreeing text retains its original geometry. Every
+changed read remains visible as uncertainty and evidence. `diagnose_variants.py`
+records successful and unsuccessful pixel alternatives without choosing text.
+The packaged smoke also checks the mandatory crop at 125%, 150%, and 200% and
+uses an accented filesystem path; stdout/stdin are explicitly UTF-8 on Windows.

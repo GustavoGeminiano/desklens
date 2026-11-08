@@ -1,0 +1,1043 @@
+{
+  "commit": "7c654fcfba32989534eced1ce2ddb20c0d4e41bb",
+  "ci_run": "https://github.com/GustavoGeminiano/desklens/actions/runs/42499197612",
+  "platforms": {
+    "Windows": {
+      "development": {
+        "summary": {
+          "raw_detector_fragments": {
+            "weighted_cer": 0.11031746031746031,
+            "weighted_cer_no_whitespace": 0.04427333974975938,
+            "weighted_text_and_box_recall_iou50": 0.0,
+            "exact_documents": 1,
+            "documents": 20
+          },
+          "canonical_layout": {
+            "weighted_cer": 0.004761904761904762,
+            "weighted_cer_no_whitespace": 0.0038498556304138597,
+            "weighted_text_and_box_recall_iou50": 0.9365853658536586,
+            "exact_documents": 17,
+            "documents": 20
+          },
+          "original_raw": {
+            "weighted_cer": 0.13253968253968254,
+            "weighted_cer_no_whitespace": 0.10202117420596728,
+            "weighted_text_and_box_recall_iou50": 0.7707317073170732,
+            "exact_documents": 6,
+            "documents": 20
+          },
+          "preprocessed_raw": {
+            "weighted_cer": 0.10555555555555556,
+            "weighted_cer_no_whitespace": 0.07025986525505294,
+            "weighted_text_and_box_recall_iou50": 0.7463414634146341,
+            "exact_documents": 6,
+            "documents": 20
+          },
+          "current_pipeline": {
+            "weighted_cer": 0.1761904761904762,
+            "weighted_cer_no_whitespace": 0.07795957651588066,
+            "weighted_text_and_box_recall_iou50": 0.7024390243902439,
+            "exact_documents": 4,
+            "documents": 20
+          }
+        },
+        "families": {
+          "code": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.09772727272727273,
+              "weighted_cer_no_whitespace": 0.008823529411764706,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 7
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0022727272727272726,
+              "weighted_cer_no_whitespace": 0.0029411764705882353,
+              "weighted_text_and_box_recall_iou50": 0.9154929577464789,
+              "exact_documents": 6,
+              "documents": 7
+            },
+            "original_raw": {
+              "weighted_cer": 0.31136363636363634,
+              "weighted_cer_no_whitespace": 0.2235294117647059,
+              "weighted_text_and_box_recall_iou50": 0.704225352112676,
+              "exact_documents": 0,
+              "documents": 7
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.2340909090909091,
+              "weighted_cer_no_whitespace": 0.1264705882352941,
+              "weighted_text_and_box_recall_iou50": 0.6338028169014085,
+              "exact_documents": 0,
+              "documents": 7
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.1,
+              "weighted_cer_no_whitespace": 0.03529411764705882,
+              "weighted_text_and_box_recall_iou50": 0.5774647887323944,
+              "exact_documents": 0,
+              "documents": 7
+            }
+          },
+          "columns": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.5733333333333334,
+              "weighted_cer_no_whitespace": 0.609375,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.013333333333333334,
+              "weighted_cer_no_whitespace": 0.015625,
+              "weighted_text_and_box_recall_iou50": 0.9166666666666666,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "current_pipeline": {
+              "weighted_cer": 1.9466666666666668,
+              "weighted_cer_no_whitespace": 0.609375,
+              "weighted_text_and_box_recall_iou50": 0.9166666666666666,
+              "exact_documents": 0,
+              "documents": 1
+            }
+          },
+          "prose_en": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.10552763819095477,
+              "weighted_cer_no_whitespace": 0.017543859649122806,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 3
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.020100502512562814,
+              "weighted_cer_no_whitespace": 0.011695906432748537,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 3
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 3,
+              "documents": 3
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 3,
+              "documents": 3
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.9354838709677419,
+              "exact_documents": 3,
+              "documents": 3
+            }
+          },
+          "prose_pt": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.06804733727810651,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 1,
+              "documents": 5
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 5,
+              "documents": 5
+            },
+            "original_raw": {
+              "weighted_cer": 0.06804733727810651,
+              "weighted_cer_no_whitespace": 0.0798611111111111,
+              "weighted_text_and_box_recall_iou50": 0.6909090909090909,
+              "exact_documents": 0,
+              "documents": 5
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.06804733727810651,
+              "weighted_cer_no_whitespace": 0.0798611111111111,
+              "weighted_text_and_box_recall_iou50": 0.6909090909090909,
+              "exact_documents": 0,
+              "documents": 5
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.06804733727810651,
+              "weighted_cer_no_whitespace": 0.0798611111111111,
+              "weighted_text_and_box_recall_iou50": 0.6727272727272727,
+              "exact_documents": 0,
+              "documents": 5
+            }
+          },
+          "ui_or_table": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.04326923076923077,
+              "weighted_cer_no_whitespace": 0.005681818181818182,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 4
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.8333333333333334,
+              "exact_documents": 4,
+              "documents": 4
+            },
+            "original_raw": {
+              "weighted_cer": 0.03365384615384615,
+              "weighted_cer_no_whitespace": 0.03977272727272727,
+              "weighted_text_and_box_recall_iou50": 0.75,
+              "exact_documents": 2,
+              "documents": 4
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.03365384615384615,
+              "weighted_cer_no_whitespace": 0.03977272727272727,
+              "weighted_text_and_box_recall_iou50": 0.75,
+              "exact_documents": 2,
+              "documents": 4
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.04326923076923077,
+              "weighted_cer_no_whitespace": 0.03977272727272727,
+              "weighted_text_and_box_recall_iou50": 0.7222222222222222,
+              "exact_documents": 1,
+              "documents": 4
+            }
+          }
+        },
+        "mandatory_exact_5line_gate": true,
+        "numerical_promotion_gates": false,
+        "warm_p95_ms": 1049.8168999999962,
+        "evidence_limit": "Synthetic clean corpus; user image contains overlay. Real clean held-out captures and both native platforms are required for production promotion.",
+        "non_exact_documents": [
+          {
+            "id": "code_07",
+            "expected": "path=\"./notes.txt\"\nprintf \"%s\\n\" \"$path\"",
+            "actual": "path=\"./notes.txt'\nprintf \"%s\\n\" \"$path\""
+          },
+          {
+            "id": "prose_07",
+            "expected": "An offline reader preserves the source.\nDo not replace unusual words silently.",
+            "actual": "An offline e reader preserves the source.\nDo not : replace unusual words silently."
+          },
+          {
+            "id": "ui_04",
+            "expected": "Task status\nActive: 27\nUpdated: 11:20\nOwner details\nTeam: Local\nUser: Alice",
+            "actual": "Task status\nActive: 27\nUpdated: 11:20\nOwner details\nTeam: Local\nUser: Alice_"
+          }
+        ]
+      },
+      "heldout": {
+        "summary": {
+          "raw_detector_fragments": {
+            "weighted_cer": 0.11480865224625623,
+            "weighted_cer_no_whitespace": 0.07028112449799197,
+            "weighted_text_and_box_recall_iou50": 0.0,
+            "exact_documents": 3,
+            "documents": 10
+          },
+          "canonical_layout": {
+            "weighted_cer": 0.0066555740432612314,
+            "weighted_cer_no_whitespace": 0.008032128514056224,
+            "weighted_text_and_box_recall_iou50": 0.8952380952380953,
+            "exact_documents": 7,
+            "documents": 10
+          },
+          "original_raw": {
+            "weighted_cer": 0.09983361064891846,
+            "weighted_cer_no_whitespace": 0.07630522088353414,
+            "weighted_text_and_box_recall_iou50": 0.7428571428571429,
+            "exact_documents": 3,
+            "documents": 10
+          },
+          "preprocessed_raw": {
+            "weighted_cer": 0.07321131447587355,
+            "weighted_cer_no_whitespace": 0.050200803212851405,
+            "weighted_text_and_box_recall_iou50": 0.7714285714285715,
+            "exact_documents": 3,
+            "documents": 10
+          },
+          "current_pipeline": {
+            "weighted_cer": 0.28618968386023297,
+            "weighted_cer_no_whitespace": 0.11244979919678715,
+            "weighted_text_and_box_recall_iou50": 0.6952380952380952,
+            "exact_documents": 3,
+            "documents": 10
+          }
+        },
+        "families": {
+          "code": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.05660377358490566,
+              "weighted_cer_no_whitespace": 0.008064516129032258,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 1,
+              "documents": 3
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.006289308176100629,
+              "weighted_cer_no_whitespace": 0.008064516129032258,
+              "weighted_text_and_box_recall_iou50": 0.9,
+              "exact_documents": 2,
+              "documents": 3
+            },
+            "original_raw": {
+              "weighted_cer": 0.22641509433962265,
+              "weighted_cer_no_whitespace": 0.12903225806451613,
+              "weighted_text_and_box_recall_iou50": 0.8,
+              "exact_documents": 0,
+              "documents": 3
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.12578616352201258,
+              "weighted_cer_no_whitespace": 0.03225806451612903,
+              "weighted_text_and_box_recall_iou50": 0.8,
+              "exact_documents": 0,
+              "documents": 3
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0440251572327044,
+              "weighted_cer_no_whitespace": 0.024193548387096774,
+              "weighted_text_and_box_recall_iou50": 0.6,
+              "exact_documents": 1,
+              "documents": 3
+            }
+          },
+          "columns": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.5333333333333333,
+              "weighted_cer_no_whitespace": 0.5,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "current_pipeline": {
+              "weighted_cer": 1.8666666666666667,
+              "weighted_cer_no_whitespace": 0.5,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 0,
+              "documents": 1
+            }
+          },
+          "prose_en": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.09859154929577464,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.9,
+              "exact_documents": 2,
+              "documents": 2
+            }
+          },
+          "prose_pt": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.04838709677419355,
+              "weighted_cer_no_whitespace": 0.018867924528301886,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.016129032258064516,
+              "weighted_cer_no_whitespace": 0.018867924528301886,
+              "weighted_text_and_box_recall_iou50": 0.95,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "original_raw": {
+              "weighted_cer": 0.11290322580645161,
+              "weighted_cer_no_whitespace": 0.1320754716981132,
+              "weighted_text_and_box_recall_iou50": 0.45,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.12096774193548387,
+              "weighted_cer_no_whitespace": 0.1320754716981132,
+              "weighted_text_and_box_recall_iou50": 0.45,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.12096774193548387,
+              "weighted_cer_no_whitespace": 0.1320754716981132,
+              "weighted_text_and_box_recall_iou50": 0.45,
+              "exact_documents": 0,
+              "documents": 2
+            }
+          },
+          "ui_or_table": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0099009900990099,
+              "weighted_cer_no_whitespace": 0.0125,
+              "weighted_text_and_box_recall_iou50": 0.6956521739130435,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "original_raw": {
+              "weighted_cer": 0.09900990099009901,
+              "weighted_cer_no_whitespace": 0.1,
+              "weighted_text_and_box_recall_iou50": 0.5652173913043478,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0891089108910891,
+              "weighted_cer_no_whitespace": 0.0875,
+              "weighted_text_and_box_recall_iou50": 0.6956521739130435,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.09900990099009901,
+              "weighted_cer_no_whitespace": 0.0875,
+              "weighted_text_and_box_recall_iou50": 0.6956521739130435,
+              "exact_documents": 0,
+              "documents": 2
+            }
+          }
+        },
+        "mandatory_exact_5line_gate": true,
+        "numerical_promotion_gates": true,
+        "warm_p95_ms": 1627.835799999957,
+        "evidence_limit": "Synthetic clean corpus; user image contains overlay. Real clean held-out captures and both native platforms are required for production promotion.",
+        "non_exact_documents": [
+          {
+            "id": "code_09",
+            "expected": "public int Add(int a, int b) {\n    return a + b;\n}",
+            "actual": "public int Add(int a, int b) {\n    return a + b;\n*"
+          },
+          {
+            "id": "prose_09",
+            "expected": "Não altere aspas: “sim”, ‘não’.\nO resultado pertence ao usuário.",
+            "actual": "Não altere aspas: “sim”, 'não'.\nO resultado pertence ao usuário."
+          },
+          {
+            "id": "ui_06",
+            "expected": "Name | Score | Rank\nAlice | 91 | 2\nBruno | 95 | 1",
+            "actual": "Name | Score | Rank\nAlice | 91 | 2_\nBruno | 95 | 1"
+          }
+        ]
+      },
+      "installed_smoke": {
+        "ok": true,
+        "startup_ms": 1097.8873999999905,
+        "first_ms": 1347.770999999966,
+        "warm_ms": [
+          873.1370000000425,
+          892.9497000001447,
+          799.4155999999748,
+          639.8280000000796,
+          645.5109999999422
+        ],
+        "warm_median_ms": 799.4155999999748,
+        "empty_path": true,
+        "app_ok": true
+      }
+    },
+    "Linux": {
+      "development": {
+        "summary": {
+          "raw_detector_fragments": {
+            "weighted_cer": 0.11190476190476191,
+            "weighted_cer_no_whitespace": 0.04427333974975938,
+            "weighted_text_and_box_recall_iou50": 0.0,
+            "exact_documents": 1,
+            "documents": 20
+          },
+          "canonical_layout": {
+            "weighted_cer": 0.00873015873015873,
+            "weighted_cer_no_whitespace": 0.005774783445620789,
+            "weighted_text_and_box_recall_iou50": 0.9365853658536586,
+            "exact_documents": 14,
+            "documents": 20
+          },
+          "original_raw": {
+            "weighted_cer": 0.07936507936507936,
+            "weighted_cer_no_whitespace": 0.04427333974975938,
+            "weighted_text_and_box_recall_iou50": 0.9024390243902439,
+            "exact_documents": 13,
+            "documents": 20
+          },
+          "preprocessed_raw": {
+            "weighted_cer": 0.08571428571428572,
+            "weighted_cer_no_whitespace": 0.05293551491819057,
+            "weighted_text_and_box_recall_iou50": 0.8975609756097561,
+            "exact_documents": 13,
+            "documents": 20
+          },
+          "current_pipeline": {
+            "weighted_cer": 0.16587301587301587,
+            "weighted_cer_no_whitespace": 0.08277189605389798,
+            "weighted_text_and_box_recall_iou50": 0.8048780487804879,
+            "exact_documents": 12,
+            "documents": 20
+          }
+        },
+        "families": {
+          "code": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.1,
+              "weighted_cer_no_whitespace": 0.008823529411764706,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 7
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.006818181818181818,
+              "weighted_cer_no_whitespace": 0.0058823529411764705,
+              "weighted_text_and_box_recall_iou50": 0.9295774647887324,
+              "exact_documents": 6,
+              "documents": 7
+            },
+            "original_raw": {
+              "weighted_cer": 0.12954545454545455,
+              "weighted_cer_no_whitespace": 0.020588235294117647,
+              "weighted_text_and_box_recall_iou50": 0.8028169014084507,
+              "exact_documents": 1,
+              "documents": 7
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.14772727272727273,
+              "weighted_cer_no_whitespace": 0.047058823529411764,
+              "weighted_text_and_box_recall_iou50": 0.7887323943661971,
+              "exact_documents": 1,
+              "documents": 7
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.125,
+              "weighted_cer_no_whitespace": 0.13823529411764707,
+              "weighted_text_and_box_recall_iou50": 0.6338028169014085,
+              "exact_documents": 1,
+              "documents": 7
+            }
+          },
+          "columns": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.5733333333333334,
+              "weighted_cer_no_whitespace": 0.609375,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "original_raw": {
+              "weighted_cer": 0.5733333333333334,
+              "weighted_cer_no_whitespace": 0.609375,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.5733333333333334,
+              "weighted_cer_no_whitespace": 0.609375,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "current_pipeline": {
+              "weighted_cer": 2.026666666666667,
+              "weighted_cer_no_whitespace": 0.609375,
+              "weighted_text_and_box_recall_iou50": 0.9166666666666666,
+              "exact_documents": 0,
+              "documents": 1
+            }
+          },
+          "prose_en": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.09547738693467336,
+              "weighted_cer_no_whitespace": 0.011695906432748537,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 3
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.020100502512562814,
+              "weighted_cer_no_whitespace": 0.011695906432748537,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 3
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 3,
+              "documents": 3
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 3,
+              "documents": 3
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.9354838709677419,
+              "exact_documents": 3,
+              "documents": 3
+            }
+          },
+          "prose_pt": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.08284023668639054,
+              "weighted_cer_no_whitespace": 0.006944444444444444,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 5
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.008875739644970414,
+              "weighted_cer_no_whitespace": 0.006944444444444444,
+              "weighted_text_and_box_recall_iou50": 0.9818181818181818,
+              "exact_documents": 3,
+              "documents": 5
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 5,
+              "documents": 5
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 5,
+              "documents": 5
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.9272727272727272,
+              "exact_documents": 5,
+              "documents": 5
+            }
+          },
+          "ui_or_table": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.03365384615384615,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 1,
+              "documents": 4
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.004807692307692308,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.8055555555555556,
+              "exact_documents": 3,
+              "documents": 4
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.8333333333333334,
+              "exact_documents": 4,
+              "documents": 4
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.8333333333333334,
+              "exact_documents": 4,
+              "documents": 4
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.009615384615384614,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.8055555555555556,
+              "exact_documents": 3,
+              "documents": 4
+            }
+          }
+        },
+        "mandatory_exact_5line_gate": true,
+        "numerical_promotion_gates": false,
+        "warm_p95_ms": 700.1189410000279,
+        "evidence_limit": "Synthetic clean corpus; user image contains overlay. Real clean held-out captures and both native platforms are required for production promotion.",
+        "non_exact_documents": [
+          {
+            "id": "code_07",
+            "expected": "path=\"./notes.txt\"\nprintf \"%s\\n\" \"$path\"",
+            "actual": "path=\"./notes.txt Il\nprintf \"%s\\n\" \"$path\""
+          },
+          {
+            "id": "prose_01",
+            "expected": "A ação começa às oito horas.\nVocê recebeu três mensagens novas.",
+            "actual": "A ação começa às oito ohoras.\nVocê recebeu três mensagens novas."
+          },
+          {
+            "id": "prose_04",
+            "expected": "Leia cada palavra com atenção.\nAcentos: órgão, saúde, açúcar, avó.",
+            "actual": "Leia cada palavra a com atenção.\nAcentos: órgão, saúde, açúcar, avó."
+          },
+          {
+            "id": "prose_06",
+            "expected": "The meeting starts at 09:45.\nPlease bring invoice number 721.",
+            "actual": "The r meeting starts at 09:45.\nPlease bring invoice number 721."
+          },
+          {
+            "id": "prose_07",
+            "expected": "An offline reader preserves the source.\nDo not replace unusual words silently.",
+            "actual": "An offline reader preserves the source.\nDo not replace e unusual words silently."
+          },
+          {
+            "id": "ui_05",
+            "expected": "Produto | Qtde | Valor\nTeclado | 2 | R$ 80\nMouse | 1 | R$ 45",
+            "actual": "Produto| Qtde | Valor\nTeclado | 2 | R$ 80\nMouse | 1 | R$ 45"
+          }
+        ]
+      },
+      "heldout": {
+        "summary": {
+          "raw_detector_fragments": {
+            "weighted_cer": 0.11980033277870217,
+            "weighted_cer_no_whitespace": 0.07028112449799197,
+            "weighted_text_and_box_recall_iou50": 0.0,
+            "exact_documents": 3,
+            "documents": 10
+          },
+          "canonical_layout": {
+            "weighted_cer": 0.008319467554076539,
+            "weighted_cer_no_whitespace": 0.008032128514056224,
+            "weighted_text_and_box_recall_iou50": 0.9047619047619048,
+            "exact_documents": 7,
+            "documents": 10
+          },
+          "original_raw": {
+            "weighted_cer": 0.10149750415973377,
+            "weighted_cer_no_whitespace": 0.07228915662650602,
+            "weighted_text_and_box_recall_iou50": 0.8666666666666667,
+            "exact_documents": 4,
+            "documents": 10
+          },
+          "preprocessed_raw": {
+            "weighted_cer": 0.10149750415973377,
+            "weighted_cer_no_whitespace": 0.07429718875502007,
+            "weighted_text_and_box_recall_iou50": 0.8857142857142857,
+            "exact_documents": 4,
+            "documents": 10
+          },
+          "current_pipeline": {
+            "weighted_cer": 0.26622296173044924,
+            "weighted_cer_no_whitespace": 0.09236947791164658,
+            "weighted_text_and_box_recall_iou50": 0.780952380952381,
+            "exact_documents": 3,
+            "documents": 10
+          }
+        },
+        "families": {
+          "code": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.05660377358490566,
+              "weighted_cer_no_whitespace": 0.008064516129032258,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 1,
+              "documents": 3
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.006289308176100629,
+              "weighted_cer_no_whitespace": 0.008064516129032258,
+              "weighted_text_and_box_recall_iou50": 0.9333333333333333,
+              "exact_documents": 2,
+              "documents": 3
+            },
+            "original_raw": {
+              "weighted_cer": 0.10062893081761007,
+              "weighted_cer_no_whitespace": 0.024193548387096774,
+              "weighted_text_and_box_recall_iou50": 0.8666666666666667,
+              "exact_documents": 0,
+              "documents": 3
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.11320754716981132,
+              "weighted_cer_no_whitespace": 0.03225806451612903,
+              "weighted_text_and_box_recall_iou50": 0.8666666666666667,
+              "exact_documents": 0,
+              "documents": 3
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.05660377358490566,
+              "weighted_cer_no_whitespace": 0.06451612903225806,
+              "weighted_text_and_box_recall_iou50": 0.6,
+              "exact_documents": 0,
+              "documents": 3
+            }
+          },
+          "columns": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.5333333333333333,
+              "weighted_cer_no_whitespace": 0.5,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 1,
+              "documents": 1
+            },
+            "original_raw": {
+              "weighted_cer": 0.5333333333333333,
+              "weighted_cer_no_whitespace": 0.5,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.5333333333333333,
+              "weighted_cer_no_whitespace": 0.5,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 0,
+              "documents": 1
+            },
+            "current_pipeline": {
+              "weighted_cer": 1.8666666666666667,
+              "weighted_cer_no_whitespace": 0.5,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 0,
+              "documents": 1
+            }
+          },
+          "prose_en": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.09859154929577464,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "original_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 1.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.9,
+              "exact_documents": 2,
+              "documents": 2
+            }
+          },
+          "prose_pt": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.07258064516129033,
+              "weighted_cer_no_whitespace": 0.018867924528301886,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 0,
+              "documents": 2
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.024193548387096774,
+              "weighted_cer_no_whitespace": 0.018867924528301886,
+              "weighted_text_and_box_recall_iou50": 0.95,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "original_raw": {
+              "weighted_cer": 0.008064516129032258,
+              "weighted_cer_no_whitespace": 0.009433962264150943,
+              "weighted_text_and_box_recall_iou50": 0.95,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.008064516129032258,
+              "weighted_cer_no_whitespace": 0.009433962264150943,
+              "weighted_text_and_box_recall_iou50": 0.95,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.04032258064516129,
+              "weighted_cer_no_whitespace": 0.04716981132075472,
+              "weighted_text_and_box_recall_iou50": 0.85,
+              "exact_documents": 1,
+              "documents": 2
+            }
+          },
+          "ui_or_table": {
+            "raw_detector_fragments": {
+              "weighted_cer": 0.0,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.0,
+              "exact_documents": 2,
+              "documents": 2
+            },
+            "canonical_layout": {
+              "weighted_cer": 0.0099009900990099,
+              "weighted_cer_no_whitespace": 0.0125,
+              "weighted_text_and_box_recall_iou50": 0.6956521739130435,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "original_raw": {
+              "weighted_cer": 0.0396039603960396,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.6086956521739131,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "preprocessed_raw": {
+              "weighted_cer": 0.0198019801980198,
+              "weighted_cer_no_whitespace": 0.0,
+              "weighted_text_and_box_recall_iou50": 0.6956521739130435,
+              "exact_documents": 1,
+              "documents": 2
+            },
+            "current_pipeline": {
+              "weighted_cer": 0.0594059405940594,
+              "weighted_cer_no_whitespace": 0.0125,
+              "weighted_text_and_box_recall_iou50": 0.7391304347826086,
+              "exact_documents": 0,
+              "documents": 2
+            }
+          }
+        },
+        "mandatory_exact_5line_gate": true,
+        "numerical_promotion_gates": false,
+        "warm_p95_ms": 723.2496450000099,
+        "evidence_limit": "Synthetic clean corpus; user image contains overlay. Real clean held-out captures and both native platforms are required for production promotion.",
+        "non_exact_documents": [
+          {
+            "id": "code_09",
+            "expected": "public int Add(int a, int b) {\n    return a + b;\n}",
+            "actual": "public int Add(int a, int b) {\n    return a + b;\n*"
+          },
+          {
+            "id": "prose_09",
+            "expected": "Não altere aspas: “sim”, ‘não’.\nO resultado pertence ao usuário.",
+            "actual": "Não altere aspas: “sim”, 'não’.\nO resultado pertence e ao usuário."
+          },
+          {
+            "id": "ui_06",
+            "expected": "Name | Score | Rank\nAlice | 91 | 2\nBruno | 95 | 1",
+            "actual": "Name | Score | Rank\nAlice | 91 | 2_\nBruno | 95 | 1"
+          }
+        ]
+      },
+      "installed_smoke": {
+        "ok": true,
+        "startup_ms": 722.2635470000114,
+        "first_ms": 598.2241049999857,
+        "warm_ms": [
+          506.3906110000289,
+          516.5810400000055,
+          519.830436999996,
+          515.3102780000154,
+          529.7470159999875
+        ],
+        "warm_median_ms": 516.5810400000055,
+        "empty_path": true,
+        "app_ok": true
+      }
+    }
+  }
+}

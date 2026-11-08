@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--app', type=Path)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    case = next(c for c in materialize(ROOT / 'scripts/ocr_benchmark/manifest.json', args.output / 'inputs') if c['id'] == 'user_report_2026_11_08_code')
+    case = next(c for c in materialize(ROOT / 'scripts/ocr_benchmark/manifest.json', args.output / 'inputs espaço') if c['id'] == 'user_report_2026_11_08_code')
     executable = args.runtime.resolve() / ('desklens-ocr.exe' if os.name == 'nt' else 'desklens-ocr')
     env = dict(os.environ, PATH='', PYTHONPATH='', PYTHONHOME='')
     started = time.perf_counter()
@@ -52,7 +52,19 @@ def main():
                 assert response.get('ok') and response.get('id') == str(index), response
                 assert response['result']['full_text'] == case['truth']['full_text'], response['result']['full_text']
                 replies.append(response)
-            report = {'ok': True, 'startup_ms': startup, 'first_ms': timings[0], 'warm_ms': timings[1:], 'warm_median_ms': statistics.median(timings[1:]), 'empty_path': True, 'result': replies[0]['result']}
+            from PIL import Image
+            image = Image.open(case['image_path'])
+            scales = []
+            for scale in (1.25, 1.5, 2.0):
+                scaled = (args.output / 'inputs espaço' / f'mandatory-{scale}.png').resolve()
+                image.resize((round(image.width * scale), round(image.height * scale)), Image.Resampling.LANCZOS).save(scaled)
+                identifier = f'scale-{scale}'
+                process.stdin.write(json.dumps({'id': identifier, 'crop_id': identifier, 'mode': 'auto', 'input_path': str(scaled)}) + '\n')
+                process.stdin.flush()
+                response = rows.get(timeout=15)
+                assert response.get('ok') and response.get('id') == identifier, response
+                scales.append({'scale': scale, 'exact': response['result']['full_text'] == case['truth']['full_text'], 'result': response['result']})
+            report = {'scales': scales, 'scale_exact_gate': all(row['exact'] for row in scales), 'ok': True, 'startup_ms': startup, 'first_ms': timings[0], 'warm_ms': timings[1:], 'warm_median_ms': statistics.median(timings[1:]), 'empty_path': True, 'result': replies[0]['result']}
         finally:
             process.kill(); process.wait(timeout=10)
     if args.app:
@@ -63,7 +75,9 @@ def main():
         assert application['result']['full_text'] == case['truth']['full_text'], application
         report['installed_app'] = application
     (args.output / 'smoke.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    print(json.dumps({k: v for k, v in report.items() if k not in ('result', 'installed_app')}))
+    print(json.dumps({k: v for k, v in report.items() if k not in ('result', 'installed_app', 'scales')}))
+    if not report['scale_exact_gate']:
+        raise SystemExit('Scaled literal accuracy gate failed; see smoke.json')
 
 
 if __name__ == '__main__': main()

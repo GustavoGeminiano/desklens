@@ -47,6 +47,11 @@ def serve(engine):
 
 
 def main():
+    # Windows redirected pipes otherwise use the active ANSI codepage. Rust's
+    # JSON-lines protocol is always UTF-8, including image paths and OCR text.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model-dir', type=Path, default=default_models())
     parser.add_argument('--self-test', type=Path, help='Recognize one local image, emit protocol response, exit')

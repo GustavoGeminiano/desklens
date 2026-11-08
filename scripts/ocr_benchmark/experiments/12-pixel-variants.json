@@ -1,0 +1,84 @@
+{
+  "input": "benchmark-results-v2-frozen-final/inputs/mandatory-1.25.png",
+  "rect": [
+    0,
+    55,
+    676,
+    58
+  ],
+  "selection": null,
+  "variants": [
+    {
+      "name": "original",
+      "text": [
+        "if 1 % 2 = 0:"
+      ],
+      "confidence": [
+        0.85353
+      ]
+    },
+    {
+      "name": "cubic_150",
+      "text": [
+        "if 1 % 2 = 0:"
+      ],
+      "confidence": [
+        0.85508
+      ]
+    },
+    {
+      "name": "area_80",
+      "text": [
+        "if 1 % 2 == 0:"
+      ],
+      "confidence": [
+        0.76843
+      ]
+    },
+    {
+      "name": "cubic_80",
+      "text": [
+        "if 1 % 2 == 0:"
+      ],
+      "confidence": [
+        0.7919
+      ]
+    },
+    {
+      "name": "gray",
+      "text": [
+        "if 1 % 2 == 0:"
+      ],
+      "confidence": [
+        0.78998
+      ]
+    },
+    {
+      "name": "inverted_gray",
+      "text": [
+        "if 1 % 2 == 0:"
+      ],
+      "confidence": [
+        0.7405
+      ]
+    },
+    {
+      "name": "clahe",
+      "text": [
+        "if 1 % 2 == 0:"
+      ],
+      "confidence": [
+        0.83284
+      ]
+    },
+    {
+      "name": "otsu",
+      "text": [
+        "if i % 2 == 0:"
+      ],
+      "confidence": [
+        0.88478
+      ]
+    }
+  ]
+}
