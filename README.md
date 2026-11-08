@@ -19,6 +19,7 @@ are published as artifacts in [GitHub Actions](https://github.com/GustavoGeminia
 
 Launch DeskLens, press `Ctrl+Shift+X`, and drag to select a region. Use **Copy
 Text**, **Translate**, or **Search Image**. Press `Esc` to close the overlay.
+Drag the **Move menu** grip to reposition the floating controls.
 The tray menu also provides capture and exit controls. Global shortcuts may
 require desktop configuration on Wayland; see [development](docs/development.md).
 

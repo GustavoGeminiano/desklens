@@ -632,3 +632,21 @@ button:active {
 #ocr-status[data-state="error"], #ocr-status[data-state="uncertain"] { color: #fbbf24; }
 #ocr-preview summary { cursor: pointer; padding: 4px 0; }
 #ocr-preview-text { display: block; width: 100%; max-height: 160px; resize: vertical; box-sizing: border-box; background: #111827; color: #f8fafc; border: 1px solid #475569; padding: 8px; font-family: monospace; white-space: pre; }
+
+/* Dedicated grip leaves buttons, language selectors and OCR text interactive. */
+.toolbar-drag-handle {
+  flex: 0 0 100%;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #a1a1aa;
+  padding: 3px 8px 6px;
+  text-align: center;
+  font: inherit;
+  font-size: 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.toolbar-drag-handle:hover, .toolbar-drag-handle:focus-visible { color: #fff; }
+.toolbar-drag-handle.dragging { cursor: grabbing; }

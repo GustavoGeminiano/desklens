@@ -161,3 +161,43 @@ test('Search Image retains the selected crop until the backend snapshots it', as
   assert.equal(actions.filter(call => call.name === 'hide_overlay' || call.name === 'clear_crop_session').length, 0,
     'Hiding or clearing before the backend handles search destroys its input image');
 });
+
+test('dragging the toolbar preserves crop and survives late OCR status updates', async () => {
+  const recognition = deferred();
+  const env = environment(() => recognition.promise);
+  await env.select();
+  const grip = env.el('toolbar-drag-handle');
+  const bar = env.el('crop-actions');
+  const cropBefore = {...env.el('crop-box').style};
+  await grip.fire('pointerdown', {button:0,pointerId:1,clientX:30,clientY:130});
+  env.events.pointermove({pointerId:1,clientX:300,clientY:400,preventDefault(){}});
+  assert.equal(bar.style.left,'272px');
+  assert.equal(bar.style.top,'380px');
+  env.events.pointerup({pointerId:1});
+  recognition.resolve(result());await flush();
+  assert.equal(bar.style.left,'272px');
+  assert.equal(bar.style.top,'380px');
+  assert.deepEqual(env.el('crop-box').style,cropBefore);
+  assert.equal(env.calls.filter(call=>call.name==='crop_selection').length,1);
+  assert.equal(env.calls.filter(call=>call.name==='extract_text_from_crop').length,1);
+  env.window.innerWidth=600;env.events.resize();
+  assert.equal(bar.style.left,'58px','Keep menu within the resized viewport');
+  await env.select();
+  assert.notEqual(bar.style.top,'380px','A new selection restores automatic placement');
+});
+
+test('toolbar drag clamps edges and stops on pointer cancellation', async () => {
+  const env=environment(async()=>result());await env.select();
+  const bar=env.el('crop-actions');const grip=env.el('toolbar-drag-handle');
+  await grip.fire('pointerdown',{button:0,pointerId:5,clientX:30,clientY:130});
+  const before=bar.style.left;
+  env.events.pointermove({pointerId:9,clientX:9000,clientY:9000,preventDefault(){}});
+  assert.equal(bar.style.left,before);
+  env.events.pointermove({pointerId:5,clientX:9000,clientY:9000,preventDefault(){}});
+  assert.equal(bar.style.left,'458px');assert.equal(bar.style.top,'732px');
+  env.events.pointermove({pointerId:5,clientX:-9000,clientY:-9000,preventDefault(){}});
+  assert.equal(bar.style.left,'2px');assert.equal(bar.style.top,'2px');
+  env.events.pointercancel({pointerId:5});
+  env.events.pointermove({pointerId:5,clientX:300,clientY:400,preventDefault(){}});
+  assert.equal(bar.style.left,'2px');assert.equal(bar.style.top,'2px');
+});

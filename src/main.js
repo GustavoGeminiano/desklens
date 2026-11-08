@@ -35,6 +35,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   const ocrCopyAnywayBtn = document.getElementById("ocr-copy-anyway-btn");
 
   // State
+  let toolbarPosition = null;
+  let toolbarDrag = null;
+  const toolbarDragHandle = document.getElementById("toolbar-drag-handle");
   let isSelecting = false;
   let isResizing = false;
   let activeHandle = null;
@@ -164,6 +167,9 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Clear current active selection
   function clearSelection() {
+    toolbarPosition = null;
+    toolbarDrag = null;
+    toolbarDragHandle?.classList.remove("dragging");
     const cropId = currentCrop?.crop_id;
     if (cropId && window.__TAURI__?.core?.invoke) {
       window.__TAURI__.core.invoke("clear_crop_session", { cropId }).catch(() => {});
@@ -715,12 +721,54 @@ window.addEventListener("DOMContentLoaded", async () => {
     return pending;
   }
 
+  function moveActionToolbar(x, y) {
+    const width = cropActions.offsetWidth || 520;
+    const height = cropActions.offsetHeight || 46;
+    toolbarPosition = {
+      x: Math.max(12, Math.min(x, Math.max(12, window.innerWidth - width - 12))),
+      y: Math.max(12, Math.min(y, Math.max(12, window.innerHeight - height - 12))),
+    };
+    cropActions.style.left = `${Math.round(toolbarPosition.x - currentRect.x)}px`;
+    cropActions.style.top = `${Math.round(toolbarPosition.y - currentRect.y)}px`;
+    cropActions.style.bottom = "auto";
+  }
+
+  toolbarDragHandle?.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const left = currentRect.x + (parseFloat(cropActions.style.left) || 0);
+    const top = currentRect.y + (parseFloat(cropActions.style.top) || 0);
+    toolbarDrag = { id: event.pointerId, dx: event.clientX - left, dy: event.clientY - top };
+    toolbarDragHandle.setPointerCapture?.(event.pointerId);
+    toolbarDragHandle.classList.add("dragging");
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (!toolbarDrag || event.pointerId !== toolbarDrag.id) return;
+    event.preventDefault();
+    moveActionToolbar(event.clientX - toolbarDrag.dx, event.clientY - toolbarDrag.dy);
+  });
+  function finishToolbarDrag(event) {
+    if (!toolbarDrag || (event?.pointerId !== undefined && event.pointerId !== toolbarDrag.id)) return;
+    toolbarDrag = null;
+    toolbarDragHandle?.classList.remove("dragging");
+  }
+  window.addEventListener("pointerup", finishToolbarDrag);
+  window.addEventListener("pointercancel", finishToolbarDrag);
+  window.addEventListener("blur", () => finishToolbarDrag());
+  toolbarDragHandle?.addEventListener("lostpointercapture", finishToolbarDrag);
+  window.addEventListener("resize", () => { if (toolbarPosition) positionActionToolbar(); });
+
   function positionActionToolbar() {
     cropActions.classList.remove("hidden");
     if (langSelectorGroup) {
       langSelectorGroup.classList.remove("hidden");
     }
 
+    if (toolbarPosition) {
+      moveActionToolbar(toolbarPosition.x, toolbarPosition.y);
+      return;
+    }
     const margin = 12;
     const toolbarW = cropActions.offsetWidth || 520;
     const toolbarH = cropActions.offsetHeight || 46;
@@ -758,6 +806,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    toolbarPosition = null;
+    toolbarDrag = null;
     invalidateRecognition();
 
     // Check if clicking on an edge handle to resize existing box
