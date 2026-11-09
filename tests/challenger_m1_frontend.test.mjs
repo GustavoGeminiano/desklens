@@ -60,8 +60,8 @@ test('late OCR from crop A cannot replace crop B or the preview',async()=>{
   assert.ok(env.el('crop-text-highlights').children[0].title.includes('fresh'));
 });
 
-test('clear cancels pending OCR effects and delayed copy labels',async()=>{
-  const pending=deferred();const env=environment(()=>pending.promise);await env.select();await env.el('clear-action-btn').fire('click');pending.resolve(result('stale'));await flush();
+test('closing the overlay cancels pending OCR effects and delayed copy labels',async()=>{
+  const pending=deferred();const env=environment(()=>pending.promise);await env.select();await env.el('close-overlay-btn').fire('click');pending.resolve(result('stale'));await flush();
   assert.equal(env.el('crop-text-highlights').children.length,0);
   assert.equal(env.el('ocr-preview-text').value,'');
   assert.equal(env.el('ocr-status').textContent,'');
@@ -80,9 +80,9 @@ test('mode switch invalidates pending recognition without accepting its old text
   assert.deepEqual(env.calls.filter(x=>x.name==='extract_text_from_crop').map(x=>x.args.mode),['auto','code']);
 });
 
-test('late translation after clear cannot resurrect an overlay',async()=>{
+test('late translation after closing cannot resurrect an overlay',async()=>{
   const translated=deferred();const env=environment(async()=>result(),()=>translated.promise);await env.select();const inFlight=env.el('translate-action-btn').fire('click');await flush();
-  await env.el('clear-action-btn').fire('click');translated.resolve({boxes:[{text:'i = 1',translated_text:'old',x:1,y:1,width:80,height:18}]});await inFlight;
+  await env.el('close-overlay-btn').fire('click');translated.resolve({boxes:[{text:'i = 1',translated_text:'old',x:1,y:1,width:80,height:18}]});await inFlight;
   assert.equal(env.el('capture-container').children.length,0);
   assert.equal(env.el('ocr-action-btn').innerHTML,'<span>📝</span> Copy Text');
 });

@@ -18,7 +18,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Control Buttons
   const closeOverlayBtn = document.getElementById("close-overlay-btn");
   const hideBtn = document.getElementById("hide-btn");
-  const clearActionBtn = document.getElementById("clear-action-btn");
   const searchActionBtn = document.getElementById("search-action-btn");
   const translateActionBtn = document.getElementById("translate-action-btn");
   const ocrActionBtn = document.getElementById("ocr-action-btn");
@@ -890,13 +889,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Action Buttons
-  if (clearActionBtn) {
-    clearActionBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      clearSelection();
-    });
-  }
-
   if (searchActionBtn) {
     searchActionBtn.addEventListener("click", async (e) => {
       e.stopPropagation();

@@ -347,7 +347,6 @@ function setupTestEnvironment(invokeMock = null) {
     "crop-text-highlights": createMockElement("div", "crop-text-highlights"),
     "close-overlay-btn": createMockElement("button", "close-overlay-btn"),
     "hide-btn": createMockElement("button", "hide-btn"),
-    "clear-action-btn": createMockElement("button", "clear-action-btn"),
     "search-action-btn": createMockElement("button", "search-action-btn"),
     "translate-action-btn": createMockElement("button", "translate-action-btn"),
     "ocr-action-btn": createMockElement("button", "ocr-action-btn"),

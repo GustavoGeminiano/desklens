@@ -121,7 +121,6 @@ function setupHighlightEnvironment() {
     "crop-text-highlights": new MockElement("div", "crop-text-highlights"),
     "close-overlay-btn": new MockElement("button", "close-overlay-btn"),
     "hide-btn": new MockElement("button", "hide-btn"),
-    "clear-action-btn": new MockElement("button", "clear-action-btn"),
     "search-action-btn": new MockElement("button", "search-action-btn"),
     "translate-action-btn": new MockElement("button", "translate-action-btn"),
     "ocr-action-btn": new MockElement("button", "ocr-action-btn"),
