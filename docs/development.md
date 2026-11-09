@@ -66,19 +66,3 @@ in an existing checkout are not tracked repository contents. Benchmark commands
 can place new reports under `build/reports/` to keep the checkout root uncluttered.
 Delete local outputs only when you no longer need their results; no cache or
 report deletion is required to contribute.
-
-## Technical report
-
-The maintained Portuguese report is [relatorio-tecnico.md](relatorio-tecnico.md).
-Its reference commit and historical measurements are stated explicitly; generating
-it does not automatically audit newer code. After reviewing and updating the
-source, render a new PDF using ReportLab in a documentation environment:
-
-```sh
-python -m pip install reportlab
-python scripts/generate_project_report.py
-```
-
-The PDF is written to ignored `output/pdf/`. `--output PATH` chooses another
-location. Inspect the rendered pages before distributing a revised report.
-ReportLab is a documentation dependency, not an application/runtime dependency.
