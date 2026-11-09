@@ -55,6 +55,8 @@ npm run tauri dev
 
 For setup, packaging and contributions, see [development](docs/development.md).
 For verification commands and known failures, see [testing](docs/testing.md).
+A consolidated Portuguese [technical report](docs/relatorio-tecnico.md) documents
+the project structure, functionality and evaluation evidence.
 
 ## Repository layout
 
