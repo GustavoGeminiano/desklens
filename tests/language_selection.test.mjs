@@ -112,7 +112,6 @@ function setupEnvironment(options = {}) {
     "crop-text-highlights": new MockElement("div", "crop-text-highlights"),
     "close-overlay-btn": new MockElement("button", "close-overlay-btn"),
     "hide-btn": new MockElement("button", "hide-btn"),
-    "test-capture-btn": new MockElement("button", "test-capture-btn"),
     "clear-action-btn": new MockElement("button", "clear-action-btn"),
     "search-action-btn": new MockElement("button", "search-action-btn"),
     "translate-action-btn": new MockElement("button", "translate-action-btn"),

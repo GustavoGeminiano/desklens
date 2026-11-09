@@ -18,7 +18,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Control Buttons
   const closeOverlayBtn = document.getElementById("close-overlay-btn");
   const hideBtn = document.getElementById("hide-btn");
-  const testCaptureBtn = document.getElementById("test-capture-btn");
   const clearActionBtn = document.getElementById("clear-action-btn");
   const searchActionBtn = document.getElementById("search-action-btn");
   const translateActionBtn = document.getElementById("translate-action-btn");
@@ -1251,31 +1250,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (hideBtn) {
     hideBtn.addEventListener("click", () => {
       hideOverlay();
-    });
-  }
-
-  if (testCaptureBtn) {
-    testCaptureBtn.addEventListener("click", async () => {
-      if (window.__TAURI__?.core?.invoke) {
-        try {
-          clearSelection();
-          const generation = selectionGeneration;
-          const screenshotUrl = await window.__TAURI__.core.invoke("trigger_capture");
-          if (!isCurrent(generation)) return;
-          if (frozenImage && screenshotUrl) {
-            frozenImage.src = screenshotUrl;
-            setViewMode("overlay");
-            if (window.__TAURI__?.window) {
-              const currentWindow = window.__TAURI__.window.getCurrentWindow();
-              await currentWindow.setDecorations(false);
-                await currentWindow.setFullscreen(true);
-                await currentWindow.setAlwaysOnTop(true);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to capture screenshot:", err);
-        }
-      }
     });
   }
 
