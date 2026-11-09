@@ -6,7 +6,7 @@
   "scripts": {
     "tauri": "tauri",
     "test": "node --test",
-    "ocr:build": "tauri build --features ocr-v2 --config src-tauri/tauri.ocr.conf.json"
+    "ocr:build": "node scripts/build_ocr_app.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

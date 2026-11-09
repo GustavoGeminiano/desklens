@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'tools/ocr_worker/**'
+      - 'scripts/build_ocr_app.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - 'src-tauri/src/**'
       - 'src-tauri/Cargo.toml'
       - 'Cargo.lock'

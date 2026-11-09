@@ -102,3 +102,12 @@ changed read remains visible as uncertainty and evidence. `diagnose_variants.py`
 records successful and unsuccessful pixel alternatives without choosing text.
 The packaged smoke also checks the mandatory crop at 125%, 150%, and 200% and
 uses an accented filesystem path; stdout/stdin are explicitly UTF-8 on Windows.
+
+
+Incremental app builds use `scripts/build_ocr_app.mjs` through `npm run ocr:build`.
+The wrapper publishes the staged executable atomically before invoking Tauri,
+so a cached resource-copy step cannot leave its expected path missing. On Linux,
+an existing worker can keep its original inode while the build gets a new one.
+On systems that lock active executables, close DeskLens before rebuilding; a
+failed replacement preserves the existing file. Do not manually rename the
+runtime executable away while the app is running.
