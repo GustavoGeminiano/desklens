@@ -11,6 +11,7 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+pub mod lens_ocr;
 pub mod ocr;
 pub mod ocr_service;
 pub mod translation;

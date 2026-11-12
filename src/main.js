@@ -93,14 +93,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     const generation = selectionGeneration;
     const crop = currentCrop;
     const mode = recognitionMode();
-    setOcrStatus("Reading text locally…", "processing");
+    setOcrStatus("Reading text…", "processing");
     const pending = window.__TAURI__.core.invoke("extract_text_from_crop", { cropId: crop.crop_id, mode })
       .then((result) => {
         if (!isCurrent(generation) || currentCrop !== crop) throw new Error("Selection changed");
         currentOcr = result;
         if (ocrPreviewText) ocrPreviewText.value = result.full_text || "";
         const uncertain = Boolean(result.uncertain);
-        setOcrStatus(!result.full_text ? "No text found. Try another mode or crop." : uncertain ? "Some text is uncertain. Review before copying." : "Text ready · processed locally", uncertain ? "uncertain" : "ready");
+        const engineLabel = result.engine === "google-lens" ? "Google Lens" : "processed locally";
+        setOcrStatus(!result.full_text ? "No text found. Try another mode or crop." : uncertain ? "Some text is uncertain. Review before copying." : `Text ready · ${engineLabel}`, uncertain ? "uncertain" : "ready");
         if (ocrPreview) ocrPreview.open = uncertain;
         renderTextHighlights(result, currentRect.w, currentRect.h);
         return result;

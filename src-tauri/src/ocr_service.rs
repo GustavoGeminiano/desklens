@@ -108,6 +108,14 @@ impl OcrService {
     }
     pub fn recognize(&self, id: &str, mode: &str, resource_dir: PathBuf) -> Result<Value, String> {
         self.recognize_with(id, mode, |image| {
+            // 1. Google Lens OCR (highest accuracy, multi-column, multilingual, complex backgrounds)
+            if let Ok(lens_res) = crate::lens_ocr::extract_text_lens(image, mode) {
+                if !lens_res.full_text.trim().is_empty() {
+                    return format_ocr_document(lens_res, "google-lens");
+                }
+            }
+
+            // 2. Offline fallback (RapidOCR/ocr-v2 or OS-native Tesseract/Windows.Media.Ocr)
             if !cfg!(feature = "ocr-v2") {
                 return native_document(image);
             }
@@ -190,10 +198,9 @@ impl OcrService {
     }
 }
 
-// Preserve the default engine until cross-platform promotion gates pass.
-fn native_document(image: &RgbaImage) -> Result<Value, String> {
-    let native = crate::ocr::extract_text_native(image)?;
-    let mut result = serde_json::to_value(native).map_err(|e| e.to_string())?;
+// Formats a canonical OcrResult into the frontend document contract.
+pub fn format_ocr_document(ocr_res: crate::ocr::OcrResult, engine: &str) -> Result<Value, String> {
+    let mut result = serde_json::to_value(ocr_res).map_err(|e| e.to_string())?;
     let full = result["full_text"].as_str().unwrap_or("").to_owned();
     let mut cursor = 0;
     if let Some(lines) = result["lines"].as_array_mut() {
@@ -220,8 +227,14 @@ fn native_document(image: &RgbaImage) -> Result<Value, String> {
             }
         }
     }
-    result["engine"] = json!("native");
+    result["engine"] = json!(engine);
     Ok(result)
+}
+
+// Fallback native document using OS OCR engine
+fn native_document(image: &RgbaImage) -> Result<Value, String> {
+    let native = crate::ocr::extract_text_native(image)?;
+    format_ocr_document(native, "native")
 }
 
 struct Process {

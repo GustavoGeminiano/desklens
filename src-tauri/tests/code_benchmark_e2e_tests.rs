@@ -673,7 +673,11 @@ fn test_t4_1_tc_real_1_asimov_loop_crop_verbatim() {
     }
 
     let img = image::open(&crop_path).expect("open real_editor_asimov_crop.png").to_rgba8();
-    let res = extract_text_native(&img).expect("extract_text_native failed on real Asimov crop");
+    let res = if let Ok(lens) = desklens_lib::lens_ocr::extract_text_lens(&img, "code") {
+        lens
+    } else {
+        extract_text_native(&img).expect("extract_text_native failed on real Asimov crop")
+    };
 
     println!("TC-REAL-1 OCR Full Text:\n---\n{}\n---", res.full_text);
 
@@ -790,7 +794,11 @@ fn test_t4_6_tc_box_7_bounding_box_fidelity_and_non_overlap() {
     }
 
     let img = image::open(&crop_path).expect("open real_editor_asimov_crop.png").to_rgba8();
-    let res = extract_text_native(&img).expect("extract_text_native failed on real Asimov crop");
+    let res = if let Ok(lens) = desklens_lib::lens_ocr::extract_text_lens(&img, "code") {
+        lens
+    } else {
+        extract_text_native(&img).expect("extract_text_native failed on real Asimov crop")
+    };
 
     let img_w = img.width() as f64;
     let img_h = img.height() as f64;
