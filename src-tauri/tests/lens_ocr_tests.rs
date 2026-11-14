@@ -98,6 +98,26 @@ fn test_google_lens_native_separators_and_exact_spacing() {
 
 #[test]
 fn test_colored_code_and_pastel_bullets_recovery() {
+    let rapid_path = std::path::Path::new("../tests/fixtures/real_low_contrast_rapid.png");
+    if rapid_path.exists() {
+        let img = image::open(rapid_path).unwrap().to_rgba8();
+        if let Ok(res) = extract_text_lens(&img, "auto") {
+            println!("=== RAPID FULL TEXT ===\n{}", res.full_text);
+            assert!(res.full_text.contains("- Rapid"), "Should recover '- Rapid' from iso-luminant pink-on-salmon image");
+        }
+    }
+
+    let clean_monokai_path = std::path::Path::new("../tests/fixtures/clean_monokai.png");
+    if clean_monokai_path.exists() {
+        let img = image::open(clean_monokai_path).unwrap().to_rgba8();
+        if let Ok(res) = extract_text_lens(&img, "code") {
+            println!("=== CLEAN_MONOKAI FULL TEXT ===\n{}", res.full_text);
+            assert!(res.full_text.contains("mensaje = raw_input"), "Should recover 'mensaje = raw_input'");
+            assert!(res.full_text.contains("li=y+index"), "Should recover 'li=y+index'");
+            assert!(res.full_text.contains("encoding =encoding+abc[li]"), "Should recover 'encoding =encoding+abc[li]'");
+        }
+    }
+
     let code1_path = std::path::Path::new("../tests/fixtures/real_code_monokai_crop.png");
     if code1_path.exists() {
         let img = image::open(code1_path).unwrap().to_rgba8();

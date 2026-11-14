@@ -43,11 +43,10 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
     let canvas_w = (orig_w + 2.0 * pad).round() as u32;
     let canvas_h = (orig_h + 2.0 * pad).round() as u32;
 
-    // Sample background color robustly using border median
     let bg_pixel = estimate_border_bg(image);
-
-    let mut padded_canvas = RgbaImage::from_pixel(canvas_w, canvas_h, bg_pixel);
     let enhanced_crop = boost_chromatic_contrast(image, bg_pixel);
+    let pad_pixel = *enhanced_crop.get_pixel(0, 0);
+    let mut padded_canvas = RgbaImage::from_pixel(canvas_w, canvas_h, pad_pixel);
     image::imageops::overlay(&mut padded_canvas, &enhanced_crop, pad as i64, pad as i64);
 
     // 2. Smart scaling up to 1480px (Google Lens max dimension is 1500px):
@@ -367,6 +366,16 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         let line_has_equals = line.words.iter().any(|w| w.text.contains('='));
 
         for idx in 0..line.words.len() {
+            if is_cond_line && is_code_context && line.words[idx].text.contains('-') {
+                // Convert `x-abc` or `x - abc` inside `if`/`elif`/`while` header into `==`
+                if line.words[idx].text == "-" && idx >= code_start + 1 {
+                    line.words[idx].text = "==".to_string();
+                    continue;
+                } else if line.words[idx].text.len() >= 3 && !line.words[idx].text.starts_with('-') && !line.words[idx].text.ends_with('-') {
+                    line.words[idx].text = line.words[idx].text.replacen('-', "==", 1);
+                    continue;
+                }
+            }
             if line.words[idx].text == "-" && is_code_context {
                 let wx0 = (line.words[idx].x - 1.0).max(0.0);
                 let wx1 = (line.words[idx].x + line.words[idx].width + 1.0).min(orig_w);
@@ -789,15 +798,70 @@ fn estimate_border_bg(image: &RgbaImage) -> image::Rgba<u8> {
     image::Rgba([rs[mid], gs[mid], bs[mid], 255])
 }
 
-/// Non-binary chromatic contrast lift: increases luminance contrast of saturated low-luminance glyphs
-/// (such as Monokai pink '=', '+', '-' and purple '0' on dark backgrounds, or pastel text on cream backgrounds)
-/// while preserving smooth anti-aliasing and multi-color fidelity.
+/// 3-step color-based foreground/background separation and contrast boost:
+/// 1. Estimates global background (`bg`) and measures full Euclidean RGB distance `d_chroma = ||P - bg||`
+///    across all pixels to identify candidate text strokes without OCR.
+/// 2. Determines the dominant foreground chromatic contrast `fg_peak` (90th percentile of stroke pixels):
+///    - If `fg_peak < 110` (low-contrast / iso-luminant image where text and background have similar brightness,
+///      such as magenta `- Rapid` on salmon background), normalizes the image to 100% Black-on-White (`0..255`)
+///      along the `BG -> FG` distance axis.
+///    - Otherwise (multi-colored syntax-highlighted code or slides with overlays), preserves background and
+///      applies a targeted chromatic luminance lift so low-luminance colored glyphs (pink `=`, purple `0`,
+///      pastel bullets/arrows) gain strong luminance contrast without turning highlight boxes into dark blocks.
 fn boost_chromatic_contrast(image: &RgbaImage, bg: image::Rgba<u8>) -> RgbaImage {
     let (w, h) = (image.width(), image.height());
+    if w == 0 || h == 0 {
+        return image.clone();
+    }
     let (bg_r, bg_g, bg_b) = (bg[0] as f32, bg[1] as f32, bg[2] as f32);
     let bg_y = 0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b;
     let is_dark = bg_y < 128.0;
 
+    // Step 1: Measure Euclidean chromatic distance of candidate stroke pixels
+    let mut stroke_dists = Vec::new();
+    for y in 0..h {
+        for x in 0..w {
+            let p = image.get_pixel(x, y);
+            let dr = (p[0] as f32) - bg_r;
+            let dg = (p[1] as f32) - bg_g;
+            let db = (p[2] as f32) - bg_b;
+            let d = (dr * dr + dg * dg + db * db).sqrt();
+            if d > 18.0 {
+                stroke_dists.push(d);
+            }
+        }
+    }
+
+    let fg_peak = if stroke_dists.len() >= 8 {
+        stroke_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        stroke_dists[(stroke_dists.len() * 90) / 100]
+    } else {
+        200.0
+    };
+
+    // Step 2a: Iso-luminant / low-contrast color pair (e.g. `- Rapid` pink on salmon where fg_peak ~ 65)
+    // Convert 100% to pure Black-on-White based on BG -> FG chromatic distance!
+    if fg_peak < 105.0 {
+        let mut out = RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+        let noise_floor = 16.0f32;
+        let target_fg = (fg_peak * 0.85).max(32.0);
+        let denom = (target_fg - noise_floor).max(10.0);
+        for y in 0..h {
+            for x in 0..w {
+                let p = image.get_pixel(x, y);
+                let dr = (p[0] as f32) - bg_r;
+                let dg = (p[1] as f32) - bg_g;
+                let db = (p[2] as f32) - bg_b;
+                let d = (dr * dr + dg * dg + db * db).sqrt();
+                let t = ((d - noise_floor) / denom).clamp(0.0, 1.0);
+                let v = (255.0 * (1.0 - t)).round() as u8;
+                out.put_pixel(x, y, image::Rgba([v, v, v, 255]));
+            }
+        }
+        return out;
+    }
+
+    // Step 2b: Multi-color code / standard contrast — boost low-luminance chromatic glyphs
     let mut out = image.clone();
     for y in 0..h {
         for x in 0..w {
@@ -817,9 +881,9 @@ fn boost_chromatic_contrast(image: &RgbaImage, bg: image::Rgba<u8>) -> RgbaImage
                     out.put_pixel(x, y, image::Rgba([nr, ng, nb, p[3]]));
                 }
             } else {
-                let dr = (bg_r - r).max(0.0);
-                let dg = (bg_g - g).max(0.0);
-                let db = (bg_b - b).max(0.0);
+                let dr = (r - bg_r).abs();
+                let dg = (g - bg_g).abs();
+                let db = (b - bg_b).abs();
                 let d_max = dr.max(dg).max(db);
                 if d_max > 20.0 {
                     let drop = (d_max - 20.0) * 0.55;
