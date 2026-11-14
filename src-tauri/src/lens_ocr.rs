@@ -232,12 +232,13 @@ fn parse_lens_lines(
     lines
 }
 
-/// Fuses OCR results from the filtered pass (`primary`) and unfiltered pass (`secondary`) using
-/// geometric bounding-box alignment: fills missing symbols/words in gaps without duplicating
-/// overlapping words, and upgrades weaker symbols when the complementary pass read a stronger one.
+/// Fuses OCR results from the original color pass (`primary`) and the filtered B&W pass (`secondary`)
+/// using geometric bounding-box alignment: keeps the color pass as the source of truth, fills missing
+/// symbols/words in gaps from the B&W pass, and only allows B&W to upgrade low-contrast operators.
 fn merge_ocr_passes(mut primary: Vec<LensInternalLine>, secondary: Vec<LensInternalLine>) -> Vec<LensInternalLine> {
     let is_strong_op = |t: &str| matches!(t, "=" | "==" | "+" | "->" | "!=" | "<=" | ">=");
     let is_weak_sym = |t: &str| matches!(t, "-" | "–" | "~" | "." | "," | ":");
+    let strip_ops = |s: &str| -> String { s.chars().filter(|&c| c != '=' && c != '+').collect() };
 
     for s_line in secondary {
         let match_idx = primary.iter().position(|p_line| {
@@ -279,15 +280,43 @@ fn merge_ocr_passes(mut primary: Vec<LensInternalLine>, secondary: Vec<LensInter
             let sw_right = sw.x + sw.width;
             let sw_cx = sw.x + sw.width * 0.5;
 
-            let overlap_idx = p_line.words.iter().position(|pw| {
-                let pw_right = pw.x + pw.width;
-                let ov = (pw_right.min(sw_right) - pw.x.max(sw.x)).max(0.0);
-                let min_w = pw.width.min(sw.width).max(1.0);
-                let pw_cx = pw.x + pw.width * 0.5;
-                (ov / min_w) >= 0.25 || (sw_cx - pw_cx).abs() <= min_w * 0.40
-            });
+            // Find all primary words overlapping horizontally with `sw`
+            let overlapping_indices: Vec<usize> = p_line
+                .words
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, pw)| {
+                    let pw_right = pw.x + pw.width;
+                    let ov = (pw_right.min(sw_right) - pw.x.max(sw.x)).max(0.0);
+                    let min_w = pw.width.min(sw.width).max(1.0);
+                    let pw_cx = pw.x + pw.width * 0.5;
+                    if (ov / min_w) >= 0.25 || (sw_cx - pw_cx).abs() <= min_w * 0.40 {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
-            if let Some(wi) = overlap_idx {
+            if !overlapping_indices.is_empty() {
+                // Multi-word span recovery: if B&W glued tokens with low-contrast '=' or '+' that color missed
+                if overlapping_indices.len() >= 2 && (sw.text.contains('=') || sw.text.contains('+')) {
+                    let first_i = *overlapping_indices.first().unwrap();
+                    let last_i = *overlapping_indices.last().unwrap();
+                    let combined_primary: String = p_line.words[first_i..=last_i]
+                        .iter()
+                        .map(|w| w.text.as_str())
+                        .collect();
+                    if strip_ops(&combined_primary) == strip_ops(&sw.text) {
+                        let last_sep = p_line.words[last_i].separator.clone();
+                        let mut replacement = sw;
+                        replacement.separator = last_sep;
+                        p_line.words.splice(first_i..=last_i, std::iter::once(replacement));
+                        continue;
+                    }
+                }
+
+                let wi = overlapping_indices[0];
                 let pw = &mut p_line.words[wi];
                 if pw.text != sw.text {
                     if is_weak_sym(&pw.text) && is_strong_op(&sw.text) {
@@ -296,8 +325,10 @@ fn merge_ocr_passes(mut primary: Vec<LensInternalLine>, secondary: Vec<LensInter
                         pw.text = sw.text;
                     } else if pw.text == "\"" && sw.text == "\"\"" {
                         pw.text = sw.text;
-                    } else if pw.text.eq_ignore_ascii_case(&sw.text)
-                        && matches!(sw.text.as_str(), "for" | "if" | "elif" | "else" | "while" | "in" | "def" | "return" | "print")
+                    } else if (sw.text.contains('=') || sw.text.contains('+'))
+                        && !pw.text.contains('=')
+                        && !pw.text.contains('+')
+                        && strip_ops(&pw.text) == strip_ops(&sw.text)
                     {
                         pw.text = sw.text;
                     }
@@ -415,14 +446,14 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
     let orig_res = rx_orig.recv_timeout(Duration::from_secs(15));
 
     let (cw_f, ch_f) = (canvas_w as f64, canvas_h as f64);
-    let mut lines = match (enh_res, orig_res) {
-        (Ok(Ok(e)), Ok(Ok(o))) => {
-            let enh_lines = parse_lens_lines(&e, cw_f, ch_f, pad, orig_w, orig_h);
+    let mut lines = match (orig_res, enh_res) {
+        (Ok(Ok(o)), Ok(Ok(e))) => {
             let orig_lines = parse_lens_lines(&o, cw_f, ch_f, pad, orig_w, orig_h);
-            merge_ocr_passes(enh_lines, orig_lines)
+            let enh_lines = parse_lens_lines(&e, cw_f, ch_f, pad, orig_w, orig_h);
+            merge_ocr_passes(orig_lines, enh_lines)
         }
-        (Ok(Ok(e)), _) => parse_lens_lines(&e, cw_f, ch_f, pad, orig_w, orig_h),
-        (_, Ok(Ok(o))) => parse_lens_lines(&o, cw_f, ch_f, pad, orig_w, orig_h),
+        (Ok(Ok(o)), _) => parse_lens_lines(&o, cw_f, ch_f, pad, orig_w, orig_h),
+        (_, Ok(Ok(e))) => parse_lens_lines(&e, cw_f, ch_f, pad, orig_w, orig_h),
         (Ok(Err(e)), _) => return Err(e),
         (Err(_), _) => return Err("Google Lens request timed out".to_string()),
     };
@@ -853,7 +884,21 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
 
     // 5. Build final OcrLine records preserving native Google Lens spacing and separators
     let mut ocr_lines = Vec::new();
-    for line in lines {
+    for mut line in lines {
+        if is_code_context {
+            for w in &mut line.words {
+                if w.text.contains("['") && w.text.contains("')") && !w.text.contains("']") {
+                    w.text = w.text.replace("')", "']");
+                } else if w.text.contains("[\"") && w.text.contains("\")") && !w.text.contains("\"]") {
+                    w.text = w.text.replace("\")", "\"]");
+                } else if w.text.contains("('") && w.text.contains("']") && !w.text.contains("')") {
+                    w.text = w.text.replace("('", "['");
+                } else if w.text.contains("(\"") && w.text.contains("\"]") && !w.text.contains("\")") {
+                    w.text = w.text.replace("(\"", "[\"");
+                }
+            }
+        }
+
         let code_start = get_code_start_idx(&line);
         let has_gutter = code_start > 0;
 
@@ -908,11 +953,49 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         });
     }
 
-    let full_text = ocr_lines
-        .iter()
-        .map(|l| l.text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Preserve empty lines between visual blocks based on vertical line pitch
+    let full_text = if ocr_lines.len() <= 1 {
+        ocr_lines
+            .first()
+            .map(|l| l.text.clone())
+            .unwrap_or_default()
+    } else {
+        let mut heights: Vec<f64> = ocr_lines.iter().map(|l| l.height).filter(|&h| h > 2.0).collect();
+        heights.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median_h = if heights.is_empty() {
+            16.0
+        } else {
+            heights[heights.len() / 2]
+        };
+
+        let mut pitches: Vec<f64> = ocr_lines
+            .windows(2)
+            .map(|w| w[1].y - w[0].y)
+            .filter(|&dy| dy >= median_h * 0.65)
+            .collect();
+        pitches.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let base_pitch = if pitches.is_empty() {
+            median_h * 1.35
+        } else {
+            pitches[pitches.len() * 3 / 10].max(median_h * 1.15)
+        };
+
+        let mut full = String::new();
+        for (i, line) in ocr_lines.iter().enumerate() {
+            if i > 0 {
+                let prev = &ocr_lines[i - 1];
+                let dy = line.y - prev.y;
+                let v_gap = line.y - (prev.y + prev.height);
+                if dy >= base_pitch * 1.55 && v_gap >= median_h * 0.55 {
+                    full.push_str("\n\n");
+                } else {
+                    full.push('\n');
+                }
+            }
+            full.push_str(&line.text);
+        }
+        full
+    };
 
     let boxes = ocr_lines
         .iter()
