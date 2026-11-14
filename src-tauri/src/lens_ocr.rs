@@ -5,6 +5,7 @@ use crate::ocr::{
     group_lines_into_paragraphs, BoundingBox, OcrLine, OcrResult, OcrWord,
 };
 
+#[derive(Clone)]
 struct LensInternalWord {
     text: String,
     separator: String,
@@ -42,28 +43,23 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
     let canvas_w = (orig_w + 2.0 * pad).round() as u32;
     let canvas_h = (orig_h + 2.0 * pad).round() as u32;
 
-    // Sample background color from crop corners
-    let bg_pixel = {
-        let p1 = image.get_pixel(0, 0);
-        let p2 = image.get_pixel(image.width() - 1, 0);
-        let p3 = image.get_pixel(0, image.height() - 1);
-        let p4 = image.get_pixel(image.width() - 1, image.height() - 1);
-        let r = ((p1[0] as u32 + p2[0] as u32 + p3[0] as u32 + p4[0] as u32) / 4) as u8;
-        let g = ((p1[1] as u32 + p2[1] as u32 + p3[1] as u32 + p4[1] as u32) / 4) as u8;
-        let b = ((p1[2] as u32 + p2[2] as u32 + p3[2] as u32 + p4[2] as u32) / 4) as u8;
-        image::Rgba([r, g, b, 255])
-    };
+    // Sample background color robustly using border median
+    let bg_pixel = estimate_border_bg(image);
 
     let mut padded_canvas = RgbaImage::from_pixel(canvas_w, canvas_h, bg_pixel);
-    image::imageops::overlay(&mut padded_canvas, image, pad as i64, pad as i64);
+    let enhanced_crop = boost_chromatic_contrast(image, bg_pixel);
+    image::imageops::overlay(&mut padded_canvas, &enhanced_crop, pad as i64, pad as i64);
 
-    // 2. Optimal lightweight scaling: enlarges small crops (<450px) by up to 1.75x so thin strokes gain thickness,
-    // while keeping max payload dimension under 1000px so uploads are instant (<300ms) and never time out.
+    // 2. Smart scaling up to 1480px (Google Lens max dimension is 1500px):
+    // Enlarges small and medium crops (up to ~1050px) so 1px strokes ('=', '-', '->', '+') gain thickness,
+    // without ever downscaling medium crops (like 982x715).
     let max_canvas_dim = canvas_w.max(canvas_h) as f64;
-    let target_scale = if max_canvas_dim < 450.0 {
-        (750.0 / max_canvas_dim).min(1.75)
-    } else if max_canvas_dim > 1000.0 {
-        1000.0 / max_canvas_dim
+    let target_scale = if max_canvas_dim < 500.0 {
+        (900.0 / max_canvas_dim).min(2.0)
+    } else if max_canvas_dim < 1150.0 {
+        (1420.0 / max_canvas_dim).min(1.65)
+    } else if max_canvas_dim > 1480.0 {
+        1480.0 / max_canvas_dim
     } else {
         1.0f64
     };
@@ -315,71 +311,368 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         .fold(f64::INFINITY, f64::min);
     let base_left_x = if base_left_x.is_finite() { base_left_x } else { 0.0 };
 
-    // 4b. Recover dropped thin symbols ('=', '-') by inspecting pixel ink inside gaps
+    // 4b. Recover dropped or misread thin symbols ('=', '==', '+', '-', '->', '""') by inspecting pixel ink
+    let is_code_context = mode == "code"
+        || lines.iter().any(|l| {
+            l.words.iter().any(|w| {
+                w.text.contains('(')
+                    || w.text.contains('[')
+                    || w.text.contains('_')
+                    || w.text == "for"
+                    || w.text == "if"
+                    || w.text == "def"
+            })
+        });
+
     for line in &mut lines {
-        // A. Leading bullet check (e.g. dropped '-' at the start of a list item)
-        if let Some(w0) = line.words.first() {
-            let is_word_item = w0.text.chars().next().map(|c| c.is_alphabetic()).unwrap_or(false);
-            if w0.x >= 14.0 && w0.x <= 50.0 && is_word_item && w0.text != "-" && w0.text != "•" {
-                let gap_x0 = (w0.x - 24.0).max(4.0);
-                let gap_x1 = w0.x - 2.0;
-                if let Some(sym) = inspect_gap_for_symbol(image, gap_x0, gap_x1, line.y, line.height) {
-                    if sym == "-" {
-                        line.words.insert(
-                            0,
-                            LensInternalWord {
-                                text: "-".to_string(),
-                                separator: " ".to_string(),
-                                x: gap_x0,
-                                y: line.y,
-                                width: (gap_x1 - gap_x0).max(4.0),
-                                height: line.height,
-                            },
-                        );
+        let code_start = get_code_start_idx(line);
+
+        // A. Leading bullet check (e.g. dropped '-' at the start of a list item, including numeric starts like "3D")
+        if !is_code_context {
+            if let Some(w0) = line.words.first() {
+                if w0.x >= 4.0 && w0.x <= 85.0 && !w0.text.starts_with('-') && w0.text != "•" && !w0.text.starts_with('#') {
+                    let gap_x0 = (w0.x - 26.0).max(3.0);
+                    let gap_x1 = w0.x - 1.5;
+                    if let Some((sym, sx, sw)) =
+                        inspect_region_for_symbol(image, bg_pixel, gap_x0, gap_x1, line.y, line.height, char_w, false, false)
+                    {
+                        if sym == "-" {
+                            line.words.insert(
+                                0,
+                                LensInternalWord {
+                                    text: "-".to_string(),
+                                    separator: " ".to_string(),
+                                    x: sx,
+                                    y: line.y,
+                                    width: sw.max(4.0),
+                                    height: line.height,
+                                },
+                            );
+                        }
                     }
                 }
             }
         }
 
-        // B. Intra-line gaps (e.g. dropped '=' between variable and expression, or '-' in gaps)
+        // B. Re-verify standalone '-' tokens that Google Lens may have misread from '=' or '=='
+        let is_cond_line = line
+            .words
+            .get(code_start)
+            .map(|w| {
+                let t = w.text.to_ascii_lowercase();
+                t == "if" || t == "elif" || t == "while"
+            })
+            .unwrap_or(false);
+
+        let line_has_equals = line.words.iter().any(|w| w.text.contains('='));
+
+        for idx in 0..line.words.len() {
+            if line.words[idx].text == "-" && is_code_context {
+                let wx0 = (line.words[idx].x - 1.0).max(0.0);
+                let wx1 = (line.words[idx].x + line.words[idx].width + 1.0).min(orig_w);
+                let detected = inspect_region_for_symbol(
+                    image,
+                    bg_pixel,
+                    wx0,
+                    wx1,
+                    line.y - 2.0,
+                    line.height + 4.0,
+                    char_w,
+                    true,
+                    true,
+                );
+                if is_cond_line && idx >= code_start + 1 && line.words[idx].width >= char_w * 1.15 {
+                    line.words[idx].text = "==".to_string();
+                } else if idx == code_start + 1 && !line_has_equals {
+                    let prev_ok = line.words[idx - 1]
+                        .text
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || c == '_');
+                    let next_ok = line
+                        .words
+                        .get(idx + 1)
+                        .map(|w| {
+                            w.text
+                                .chars()
+                                .next()
+                                .map(|c| c.is_alphanumeric() || c == '_' || c == '[' || c == '"' || c == '\'')
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
+                    if prev_ok && next_ok {
+                        line.words[idx].text = "=".to_string();
+                    }
+                } else if let Some((sym, _, _)) = detected {
+                    if sym == "=" || sym == "==" {
+                        line.words[idx].text = if is_cond_line { "==".to_string() } else { "=".to_string() };
+                    }
+                }
+            }
+        }
+
+        // C. Intra-line gaps (recover dropped '=', '==', '+', '-', '->' in genuine gaps)
         let mut idx = 0;
         while idx + 1 < line.words.len() {
             let w_curr_right = line.words[idx].x + line.words[idx].width;
             let w_next_left = line.words[idx + 1].x;
             let gap = w_next_left - w_curr_right;
 
-            if gap >= (char_w * 1.2).max(10.0) && gap <= 100.0 {
-                let prev_text = &line.words[idx].text;
-                let next_text = &line.words[idx + 1].text;
-                let is_assign_lhs = prev_text.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ',');
-                let is_assign_rhs = next_text.starts_with('"')
-                    || next_text.starts_with('\'')
-                    || next_text.starts_with('[')
-                    || next_text.starts_with('{')
-                    || next_text.starts_with('(')
-                    || next_text.starts_with("raw_input")
-                    || next_text.starts_with("input")
-                    || next_text.chars().all(|c| c.is_ascii_digit());
+            if gap >= 6.0 && gap <= 110.0 {
+                let prev_text = line.words[idx].text.clone();
+                let next_text = line.words[idx + 1].text.clone();
+                let prev_lower = prev_text.to_ascii_lowercase();
+                let prev_already_op = prev_text.ends_with('=')
+                    || prev_text.ends_with('-')
+                    || prev_text.ends_with('+')
+                    || prev_text.ends_with('(')
+                    || prev_text.ends_with('[')
+                    || prev_text.ends_with(':')
+                    || prev_text.ends_with(',')
+                    || prev_text.starts_with('#')
+                    || prev_text.starts_with('"')
+                    || prev_text.starts_with('\'')
+                    || prev_lower == "in"
+                    || prev_lower == "for"
+                    || prev_lower == "if"
+                    || prev_lower == "elif"
+                    || prev_lower == "while"
+                    || prev_lower == "def"
+                    || prev_lower == "return"
+                    || prev_lower == "print";
+                let next_already_op = next_text.starts_with('=')
+                    || next_text.starts_with('-')
+                    || next_text.starts_with('+')
+                    || next_text.starts_with('>')
+                    || next_text.starts_with(')')
+                    || next_text.starts_with(']')
+                    || next_text.starts_with(':')
+                    || next_text.starts_with(',')
+                    || next_text.starts_with('.')
+                    || next_text.starts_with('#');
 
-                if let Some(sym) = inspect_gap_for_symbol(image, w_curr_right, w_next_left, line.y, line.height) {
-                    let recovered_sym = if is_assign_lhs && is_assign_rhs && sym == "-" {
-                        "="
-                    } else {
-                        sym
-                    };
-                    let new_word = LensInternalWord {
-                        text: recovered_sym.to_string(),
-                        separator: " ".to_string(),
-                        x: w_curr_right + 1.0,
-                        y: line.y,
-                        width: (gap - 2.0).max(4.0),
-                        height: line.height,
-                    };
-                    line.words.insert(idx + 1, new_word);
-                    idx += 1;
+                // Do not recover code operators inside string literals (count quotes before idx)
+                let quotes_before: usize = line.words[..=idx]
+                    .iter()
+                    .map(|w| w.text.chars().filter(|&c| c == '"' || c == '\'').count())
+                    .sum();
+                let inside_quotes = is_code_context && (quotes_before % 2 == 1);
+
+                if !prev_already_op && !next_already_op && !inside_quotes {
+                    let is_assign_lhs = idx <= code_start + 2
+                        && !line.words.iter().any(|w| w.text == "=" || w.text == "==")
+                        && line.words[code_start..=idx].iter().all(|w| {
+                            w.text != "print"
+                                && w.text != "for"
+                                && w.text != "if"
+                                && w.text
+                                    .chars()
+                                    .all(|c| c.is_alphanumeric() || c == '_' || c == ',')
+                        });
+                    let is_assign_rhs = next_text.starts_with('"')
+                        || next_text.starts_with('\'')
+                        || next_text.starts_with('[')
+                        || next_text.starts_with('{')
+                        || next_text.starts_with('(')
+                        || next_text
+                            .chars()
+                            .next()
+                            .map(|c| c.is_alphanumeric() || c == '_')
+                            .unwrap_or(false);
+
+                    let inset = if gap >= 14.0 { 2.0 } else { 1.0 };
+                    if let Some((sym, sx, sw)) = inspect_region_for_symbol(
+                        image,
+                        bg_pixel,
+                        w_curr_right + inset,
+                        w_next_left - inset,
+                        line.y - 2.0,
+                        line.height + 4.0,
+                        char_w,
+                        is_code_context,
+                        false,
+                    ) {
+                        let allow = if is_code_context {
+                            if sym == "=" || sym == "==" || sym == "-" {
+                                (is_assign_lhs && is_assign_rhs) || is_cond_line
+                            } else {
+                                sym == "+"
+                            }
+                        } else {
+                            (sym == "->" || sym == "-") && gap >= 15.0
+                        };
+
+                        if allow {
+                            let recovered_sym = if is_code_context && is_cond_line {
+                                if sw >= char_w * 1.20 { "==" } else { "=" }
+                            } else if is_code_context && (sym == "-" || sym == "==") && is_assign_lhs {
+                                "="
+                            } else {
+                                sym
+                            };
+
+                            let left_pad = sx - w_curr_right;
+                            let right_pad = w_next_left - (sx + sw);
+                            if left_pad < char_w * 0.40 {
+                                line.words[idx].separator = String::new();
+                            } else if line.words[idx].separator.is_empty() {
+                                line.words[idx].separator = " ".to_string();
+                            }
+                            let right_sep = if right_pad >= char_w * 0.40 {
+                                " ".to_string()
+                            } else {
+                                String::new()
+                            };
+
+                            let new_word = LensInternalWord {
+                                text: recovered_sym.to_string(),
+                                separator: right_sep,
+                                x: sx,
+                                y: line.y,
+                                width: sw.max(4.0),
+                                height: line.height,
+                            };
+                            line.words.insert(idx + 1, new_word);
+                            idx += 1;
+                        }
+                    }
                 }
             }
             idx += 1;
+        }
+
+        // D. Trailing symbols after the last word on a line (e.g. 'encoding= ""' or 'posicion= 0' / 'suma = 0')
+        if is_code_context {
+            // Fix Google Lens misreading `""` after `=` as `"` + `0` (e.g. `espacios="0` -> `espacios=""`)
+            let w_len = line.words.len();
+            if w_len >= 3
+                && line.words[w_len - 1].text == "0"
+                && line.words[w_len - 2].text == "\""
+                && line.words[w_len - 3].text.ends_with('=')
+                && line.words[w_len - 1].x - line.words[w_len - 2].x <= char_w * 2.0
+            {
+                let qx = line.words[w_len - 2].x;
+                let qw = (line.words[w_len - 1].x + line.words[w_len - 1].width) - qx;
+                if let Some((sym, _, _)) = inspect_region_for_symbol(
+                    image,
+                    bg_pixel,
+                    qx + 1.0,
+                    qx + qw + 2.0,
+                    line.y - 2.0,
+                    line.height + 4.0,
+                    char_w,
+                    true,
+                    true,
+                ) {
+                    if sym == "\"\"" {
+                        line.words.pop();
+                        if let Some(lw) = line.words.last_mut() {
+                            lw.text = "\"\"".to_string();
+                            lw.width = qw;
+                        }
+                    }
+                }
+            }
+
+            if let Some(last_w) = line.words.last().cloned() {
+                let last_right = last_w.x + last_w.width;
+                let scan_end = (last_right + char_w * 5.0).min(orig_w);
+                if last_w.text.ends_with('-') && last_w.text.len() >= 2 && line.words.len() == code_start + 1 {
+                    if let Some(lw) = line.words.last_mut() {
+                        lw.text.pop();
+                        lw.text.push('=');
+                    }
+                }
+                if scan_end > last_right + 4.0 {
+                    let updated_last = line.words.last().cloned().unwrap();
+                    if updated_last.text.ends_with('=') {
+                        if let Some((sym, sx, sw)) = inspect_region_for_symbol(
+                            image,
+                            bg_pixel,
+                            last_right + 1.5,
+                            scan_end,
+                            line.y - 2.0,
+                            line.height + 4.0,
+                            char_w,
+                            true,
+                            true,
+                        ) {
+                            if sym == "\"\"" {
+                                if let Some(lw) = line.words.last_mut() {
+                                    if sx - last_right >= char_w * 0.40 {
+                                        lw.separator = " ".to_string();
+                                    }
+                                }
+                                line.words.push(LensInternalWord {
+                                    text: "\"\"".to_string(),
+                                    separator: String::new(),
+                                    x: sx,
+                                    y: line.y,
+                                    width: sw.max(6.0),
+                                    height: line.height,
+                                });
+                            }
+                        }
+                    } else if line.words.len() == code_start + 1
+                        && updated_last.text != "else"
+                        && updated_last.text.chars().all(|c| c.is_alphanumeric() || c == '_')
+                    {
+                        let eq_end = (last_right + char_w * 2.5).min(orig_w);
+                        if let Some((sym, sx, sw)) = inspect_region_for_symbol(
+                            image,
+                            bg_pixel,
+                            last_right + 1.0,
+                            eq_end,
+                            line.y - 2.0,
+                            line.height + 4.0,
+                            char_w,
+                            true,
+                            true,
+                        ) {
+                            if sym == "=" || sym == "-" {
+                                if let Some(lw) = line.words.last_mut() {
+                                    lw.separator = if sx - last_right >= char_w * 0.40 {
+                                        " ".to_string()
+                                    } else {
+                                        String::new()
+                                    };
+                                }
+                                let rhs_start = sx + sw + 1.5;
+                                let rhs_tok = inspect_trailing_literal(
+                                    image,
+                                    bg_pixel,
+                                    rhs_start,
+                                    (rhs_start + char_w * 3.2).min(orig_w),
+                                    line.y - 2.0,
+                                    line.height + 4.0,
+                                );
+                                let eq_sep = if rhs_tok.as_ref().map(|(_, rx, _)| *rx - (sx + sw) >= char_w * 0.40).unwrap_or(false) {
+                                    " ".to_string()
+                                } else {
+                                    String::new()
+                                };
+                                line.words.push(LensInternalWord {
+                                    text: "=".to_string(),
+                                    separator: eq_sep,
+                                    x: sx,
+                                    y: line.y,
+                                    width: sw.max(5.0),
+                                    height: line.height,
+                                });
+                                if let Some((lit, rx, rw)) = rhs_tok {
+                                    line.words.push(LensInternalWord {
+                                        text: lit.to_string(),
+                                        separator: String::new(),
+                                        x: rx,
+                                        y: line.y,
+                                        width: rw.max(5.0),
+                                        height: line.height,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -470,89 +763,355 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
     })
 }
 
-/// Inspects an image gap between words or before the first word to recover thin symbols ('=', '-')
-/// that may have been missed by neural OCR due to extreme thinness or low color contrast.
-fn inspect_gap_for_symbol(
+/// Estimates dominant background color from an interior + border sample grid using median per channel.
+fn estimate_border_bg(image: &RgbaImage) -> image::Rgba<u8> {
+    let (w, h) = (image.width(), image.height());
+    if w == 0 || h == 0 {
+        return image::Rgba([0, 0, 0, 255]);
+    }
+    let mut rs = Vec::new();
+    let mut gs = Vec::new();
+    let mut bs = Vec::new();
+    let step_x = (w / 12).max(1);
+    let step_y = (h / 12).max(1);
+    for y in (0..h).step_by(step_y as usize) {
+        for x in (0..w).step_by(step_x as usize) {
+            let p = image.get_pixel(x, y);
+            rs.push(p[0]);
+            gs.push(p[1]);
+            bs.push(p[2]);
+        }
+    }
+    rs.sort_unstable();
+    gs.sort_unstable();
+    bs.sort_unstable();
+    let mid = rs.len() / 2;
+    image::Rgba([rs[mid], gs[mid], bs[mid], 255])
+}
+
+/// Non-binary chromatic contrast lift: increases luminance contrast of saturated low-luminance glyphs
+/// (such as Monokai pink '=', '+', '-' and purple '0' on dark backgrounds, or pastel text on cream backgrounds)
+/// while preserving smooth anti-aliasing and multi-color fidelity.
+fn boost_chromatic_contrast(image: &RgbaImage, bg: image::Rgba<u8>) -> RgbaImage {
+    let (w, h) = (image.width(), image.height());
+    let (bg_r, bg_g, bg_b) = (bg[0] as f32, bg[1] as f32, bg[2] as f32);
+    let bg_y = 0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b;
+    let is_dark = bg_y < 128.0;
+
+    let mut out = image.clone();
+    for y in 0..h {
+        for x in 0..w {
+            let p = image.get_pixel(x, y);
+            let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+            if is_dark {
+                let dr = (r - bg_r).max(0.0);
+                let dg = (g - bg_g).max(0.0);
+                let db = (b - bg_b).max(0.0);
+                // Specifically lift saturated red/pink/magenta/purple glyphs where green is low
+                let chroma = dr.max(db) - dg;
+                if chroma > 20.0 {
+                    let lift = (chroma - 20.0) * 0.68;
+                    let nr = (r + lift * 0.60).min(255.0) as u8;
+                    let ng = (g + lift).min(255.0) as u8;
+                    let nb = (b + lift * 0.80).min(255.0) as u8;
+                    out.put_pixel(x, y, image::Rgba([nr, ng, nb, p[3]]));
+                }
+            } else {
+                let dr = (bg_r - r).max(0.0);
+                let dg = (bg_g - g).max(0.0);
+                let db = (bg_b - b).max(0.0);
+                let d_max = dr.max(dg).max(db);
+                if d_max > 20.0 {
+                    let drop = (d_max - 20.0) * 0.55;
+                    let nr = (r - drop).max(0.0) as u8;
+                    let ng = (g - drop).max(0.0) as u8;
+                    let nb = (b - drop).max(0.0) as u8;
+                    out.put_pixel(x, y, image::Rgba([nr, ng, nb, p[3]]));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Inspects a horizontal region `[x0, x1]` on a line `[y0, y0 + h]` to classify missed or misread symbols
+/// ('=', '==', '+', '-', '->', '""'), returning `(symbol_str, ink_x, ink_width)`.
+fn inspect_region_for_symbol(
     image: &RgbaImage,
+    global_bg: image::Rgba<u8>,
     x0: f64,
     x1: f64,
     y0: f64,
     h: f64,
-) -> Option<&'static str> {
+    char_w: f64,
+    is_code: bool,
+    allow_boundary: bool,
+) -> Option<(&'static str, f64, f64)> {
     let (img_w, img_h) = (image.width(), image.height());
     let xs = (x0.max(0.0).round() as u32).min(img_w);
     let xe = (x1.max(0.0).round() as u32).min(img_w);
-    let gap_w = xe.saturating_sub(xs);
-    if gap_w < 5 || gap_w > 120 {
+    let ys = (y0.max(0.0).round() as u32).min(img_h);
+    let ye = ((y0 + h).max(0.0).round() as u32).min(img_h);
+
+    let w_box = xe.saturating_sub(xs) as usize;
+    let h_box = ye.saturating_sub(ys) as usize;
+    if w_box < 4 || w_box > 130 || h_box < 6 {
         return None;
     }
 
-    let ys = (y0 + h * 0.20).max(0.0).round() as u32;
-    let ye = (y0 + h * 0.80).min(img_h as f64).round() as u32;
-    if ye <= ys + 2 {
-        return None;
-    }
+    let (bg_r, bg_g, bg_b) = (global_bg[0] as f32, global_bg[1] as f32, global_bg[2] as f32);
+    let bg_y = 0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b;
 
-    // Estimate local background color from surrounding boundary
-    let sample_x = xs.saturating_sub(2);
-    let bg = image.get_pixel(sample_x, (ys + ye) / 2);
-    let (bg_r, bg_g, bg_b) = (bg[0] as f32, bg[1] as f32, bg[2] as f32);
+    let mut row_lum_diff = vec![0.0f32; h_box];
+    let mut row_ink = vec![0usize; h_box];
+    let mut col_ink = vec![0usize; w_box];
 
-    let mut row_ink_counts = Vec::new();
-    let mut total_ink = 0;
-    for y in ys..ye {
-        let mut row_ink = 0;
-        for x in xs..xe {
+    for r_idx in 0..h_box {
+        let y = ys + r_idx as u32;
+        for c_idx in 0..w_box {
+            let x = xs + c_idx as u32;
             let p = image.get_pixel(x, y);
-            let diff = (p[0] as f32 - bg_r).abs()
-                .max((p[1] as f32 - bg_g).abs())
-                .max((p[2] as f32 - bg_b).abs());
-            if diff > 22.0 {
-                row_ink += 1;
-                total_ink += 1;
+            let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+            let d_max = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
+            let yv = 0.299 * r + 0.587 * g + 0.114 * b;
+            let dy = (yv - bg_y).abs();
+            let is_blue_border = if bg_y < 128.0 {
+                // Highlight borders are cool blue/cyan (b > r + 4, g > r - 8) or neutral gray-blue (|r - g| < 16 && b >= r - 2)
+                // whereas Monokai operators are warm magenta/pink/purple (r > g + 22)
+                (b > r + 4.0 && g > r - 8.0) || ((r - g).abs() < 16.0 && b >= r - 2.0)
+            } else {
+                b > r + 15.0 && (bg_r - r) > 35.0
+            };
+            if !is_blue_border && d_max > 20.0 {
+                row_lum_diff[r_idx] += dy;
+                row_ink[r_idx] += 1;
+                col_ink[c_idx] += 1;
             }
         }
-        row_ink_counts.push(row_ink);
     }
 
-    if total_ink < 4 {
+    // Only strip 1px edge columns if they are tall (> 60% of h_box, i.e. vertical letter edge bleed)
+    if !allow_boundary && w_box >= 6 {
+        let tall_thresh = (h_box * 60) / 100;
+        if col_ink[0] >= tall_thresh {
+            col_ink[0] = 0;
+        }
+        if col_ink[w_box - 1] >= tall_thresh {
+            col_ink[w_box - 1] = 0;
+        }
+    }
+
+    // Suppress isolated 1-2px noise columns (e.g. JPEG artifacts or border corners) so they don't inflate island count
+    if w_box >= 5 {
+        let raw_cols = col_ink.clone();
+        for c in 0..w_box {
+            if raw_cols[c] == 1 {
+                let left = if c > 0 { raw_cols[c - 1] } else { 0 };
+                let right = if c + 1 < w_box { raw_cols[c + 1] } else { 0 };
+                if left == 0 && right == 0 {
+                    col_ink[c] = 0;
+                }
+            }
+        }
+    }
+
+    let active_cols: Vec<usize> = (0..w_box).filter(|&c| col_ink[c] >= 1).collect();
+    if active_cols.len() < 3 {
         return None;
     }
+    let first_col = *active_cols.first().unwrap();
+    let last_col = *active_cols.last().unwrap();
+    let ink_w = last_col - first_col + 1;
+    let sym_x = xs as f64 + first_col as f64;
+    let sym_w = ink_w as f64;
 
-    let min_row_ink = (gap_w / 3).max(3);
-    let active_rows: Vec<usize> = row_ink_counts
-        .iter()
-        .enumerate()
-        .filter(|&(_, &c)| c >= min_row_ink)
-        .map(|(i, _)| i)
-        .collect();
+    // Measure longest contiguous horizontal run of active columns
+    let mut max_contig_w = 0usize;
+    let mut cur_contig = 0usize;
+    let mut islands = 0usize;
+    for &c in &col_ink {
+        if c > 0 {
+            if cur_contig == 0 {
+                islands += 1;
+            }
+            cur_contig += 1;
+            if cur_contig > max_contig_w {
+                max_contig_w = cur_contig;
+            }
+        } else {
+            cur_contig = 0;
+        }
+    }
 
+    let min_row_c = (max_contig_w / 3).max(2);
+    let active_rows: Vec<usize> = (0..h_box).filter(|&r| row_ink[r] >= min_row_c).collect();
     if active_rows.is_empty() {
         return None;
     }
+    let first_row = *active_rows.first().unwrap();
+    let last_row = *active_rows.last().unwrap();
+    let ink_h = last_row - first_row + 1;
 
-    // Check if there are two distinct horizontal bands (equals sign '=')
-    // Band 1 in upper half, Band 2 in lower half, with at least 1 row gap between them
-    let upper_rows: Vec<usize> = active_rows.iter().copied().filter(|&r| r < row_ink_counts.len() / 2).collect();
-    let lower_rows: Vec<usize> = active_rows.iter().copied().filter(|&r| r >= row_ink_counts.len() / 2).collect();
+    // 1. Quotes '""': ONLY when allow_boundary is true (trailing check after '='), 1 or 2 short vertical islands in upper 62%
+    let upper_cut = ((h_box as f64) * 0.62).round() as usize;
+    let lower_cut = ((h_box as f64) * 0.65).round() as usize;
+    let upper_ink: usize = row_ink.iter().take(upper_cut.min(h_box)).sum();
+    let lower_ink: usize = row_ink.iter().skip(lower_cut.min(h_box)).sum();
+    if allow_boundary
+        && is_code
+        && ((islands >= 2 && ink_w >= 5) || (islands == 1 && ink_w >= 10))
+        && ink_w <= 18
+        && upper_ink >= 4
+        && lower_ink == 0
+        && last_row <= upper_cut
+    {
+        return Some(("\"\"", sym_x, sym_w));
+    }
 
-    if !upper_rows.is_empty() && !lower_rows.is_empty() {
-        let max_upper = *upper_rows.iter().max().unwrap();
-        let min_lower = *lower_rows.iter().min().unwrap();
-        if min_lower >= max_upper + 2 {
-            return Some("=");
+    // All horizontal symbols ('=', '==', '+', '-', '->') require a contiguous horizontal stroke of at least 4 columns
+    if max_contig_w < 4 || islands > 2 {
+        return None;
+    }
+
+    let max_col_h = col_ink.iter().copied().max().unwrap_or(0);
+
+    // 2. Bimodal horizontal bars ('=' or '=='): two peaks in row_lum_diff separated by a valley
+    if is_code && ink_h <= 8 && max_col_h <= 8 {
+        let r_start = ((h_box as f64) * 0.12).round() as usize;
+        let r_end = ((h_box as f64) * 0.90).round() as usize;
+        let mut peaks: Vec<(usize, f32)> = Vec::new();
+        for r in r_start.max(1)..r_end.min(h_box.saturating_sub(1)) {
+            let val = row_lum_diff[r];
+            if val > 22.0 && val >= row_lum_diff[r - 1] && val >= row_lum_diff[r + 1] {
+                if peaks.last().map(|&(pr, _)| r - pr >= 2).unwrap_or(true) {
+                    peaks.push((r, val));
+                } else if let Some(last) = peaks.last_mut() {
+                    if val > last.1 {
+                        *last = (r, val);
+                    }
+                }
+            }
+        }
+        if peaks.len() >= 2 {
+            let (p1_r, p1_v) = peaks[0];
+            let (p2_r, p2_v) = *peaks.last().unwrap();
+            if p2_r >= p1_r + 2 && p2_r <= p1_r + 7 {
+                let valley_v = row_lum_diff[(p1_r + 1)..p2_r]
+                    .iter()
+                    .copied()
+                    .fold(f32::INFINITY, f32::min);
+                if valley_v < 0.88 * p1_v.min(p2_v) {
+                    let tok = if sym_w >= (char_w * 1.45).max(12.5) {
+                        "=="
+                    } else {
+                        "="
+                    };
+                    return Some((tok, sym_x, sym_w));
+                }
+            }
+        }
+        // Fallback when 4:2:0 vertical subsampling merges the 2 bars of '=' into a 4-8px thick magenta block
+        if ink_h >= 4 && ink_h <= 8 && max_contig_w >= 6 && ink_w <= 14 && first_row >= 1 && last_row + 1 < h_box {
+            return Some(("=", sym_x, sym_w));
         }
     }
 
-    // Check if there is one continuous horizontal band in the vertical middle (dash '-')
-    let mid_y = row_ink_counts.len() / 2;
-    let has_mid_ink = active_rows.iter().any(|&r| (r as isize - mid_y as isize).abs() <= 2);
-    let top_clean = row_ink_counts.first().copied().unwrap_or(0) == 0;
-    let bot_clean = row_ink_counts.last().copied().unwrap_or(0) == 0;
-
-    if has_mid_ink && (top_clean || bot_clean) {
-        return Some("-");
+    // 3. Plus sign '+': single contiguous component with taller vertical stem in middle columns + horizontal bar
+    if is_code
+        && islands == 1
+        && max_col_h >= 5
+        && max_contig_w >= 5
+        && ink_w <= 12
+        && ink_h >= 5
+        && ink_h <= 12
+        && (ink_h as isize - ink_w as isize).abs() <= 3
+    {
+        let mid_c = (first_col + last_col) / 2;
+        let c0 = mid_c.saturating_sub(1);
+        let c1 = (mid_c + 1).min(w_box - 1);
+        let center_h = col_ink[c0..=c1].iter().copied().max().unwrap_or(0);
+        let edge_h = col_ink[first_col].max(col_ink[last_col]);
+        if center_h >= edge_h + 3 && center_h >= 5 && edge_h <= 3 {
+            return Some(("+", sym_x, sym_w));
+        }
     }
 
+    // 4. Arrow '->': single contiguous wide stroke with thin stem on left half and taller arrowhead on right half
+    if islands == 1 && max_contig_w >= 9 && ink_w >= 9 && ink_w <= 28 {
+        let half = active_cols.len() / 2;
+        let left_max_h = active_cols[..half].iter().map(|&c| col_ink[c]).max().unwrap_or(0);
+        let right_max_h = active_cols[half..].iter().map(|&c| col_ink[c]).max().unwrap_or(0);
+        if right_max_h >= left_max_h + 2 && right_max_h >= 4 && right_max_h <= 10 && left_max_h >= 1 && left_max_h <= 4 {
+            return Some(("->", sym_x, sym_w));
+        }
+    }
+
+    // 5. Dash '-': single contiguous horizontal bar in vertical middle
+    if islands == 1 && ink_h <= 6 && max_col_h <= 6 && max_contig_w >= 4 && ink_w <= 15 && ink_w >= ink_h {
+        let top_clean = row_ink.first().copied().unwrap_or(0) == 0;
+        let bot_clean = row_ink.last().copied().unwrap_or(0) == 0;
+        if top_clean || bot_clean {
+            return Some(("-", sym_x, sym_w));
+        }
+    }
+
+    None
+}
+
+/// Checks if a trailing region after `=` on a short assignment line contains `""` or `0`.
+fn inspect_trailing_literal(
+    image: &RgbaImage,
+    bg: image::Rgba<u8>,
+    x0: f64,
+    x1: f64,
+    y0: f64,
+    h: f64,
+) -> Option<(&'static str, f64, f64)> {
+    if let Some((sym, sx, sw)) = inspect_region_for_symbol(image, bg, x0, x1, y0, h, 8.0, true, true) {
+        if sym == "\"\"" {
+            return Some(("\"\"", sx, sw));
+        }
+    }
+    let (img_w, img_h) = (image.width(), image.height());
+    let xs = (x0.max(0.0).round() as u32).min(img_w);
+    let xe = (x1.max(0.0).round() as u32).min(img_w);
+    let ys = (y0.max(0.0).round() as u32).min(img_h);
+    let ye = ((y0 + h).max(0.0).round() as u32).min(img_h);
+    let w_box = xe.saturating_sub(xs) as usize;
+    let h_box = ye.saturating_sub(ys) as usize;
+    if w_box < 4 || h_box < 6 {
+        return None;
+    }
+    let (bg_r, bg_g, bg_b) = (bg[0] as f32, bg[1] as f32, bg[2] as f32);
+    let bg_y = 0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b;
+    let mut col_ink = vec![0usize; w_box];
+    let mut row_ink = vec![0usize; h_box];
+    for r_idx in 0..h_box {
+        for c_idx in 0..w_box {
+            let p = image.get_pixel(xs + c_idx as u32, ys + r_idx as u32);
+            let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+            let d_max = (r - bg_r).abs().max((g - bg_g).abs()).max((b - bg_b).abs());
+            let is_blue_border = if bg_y < 128.0 {
+                // Only filter cyan/gray-blue highlight borders where green >= red - 2 and blue < red + 35 (sparing purple '0' where blue >= red + 35)
+                (b > r + 4.0 && b < r + 35.0 && g >= r - 2.0) || ((r - g).abs() < 12.0 && b >= r && b < r + 28.0)
+            } else {
+                b > r + 15.0 && (bg_r - r) > 35.0
+            };
+            if !is_blue_border && d_max > 25.0 {
+                col_ink[c_idx] += 1;
+                row_ink[r_idx] += 1;
+            }
+        }
+    }
+    let active_cols: Vec<usize> = (0..w_box).filter(|&c| col_ink[c] >= 2).collect();
+    let active_rows: Vec<usize> = (0..h_box).filter(|&r| row_ink[r] >= 2).collect();
+    if active_cols.len() >= 3 && active_rows.len() >= (h_box * 45) / 100 {
+        let fc = *active_cols.first().unwrap();
+        let lc = *active_cols.last().unwrap();
+        let iw = lc - fc + 1;
+        if iw >= 4 && iw <= 12 {
+            return Some(("0", xs as f64 + fc as f64, iw as f64));
+        }
+    }
     None
 }

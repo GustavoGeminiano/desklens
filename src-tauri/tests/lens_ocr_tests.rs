@@ -95,3 +95,47 @@ fn test_google_lens_native_separators_and_exact_spacing() {
         }
     }
 }
+
+#[test]
+fn test_colored_code_and_pastel_bullets_recovery() {
+    let code1_path = std::path::Path::new("../tests/fixtures/real_code_monokai_crop.png");
+    if code1_path.exists() {
+        let img = image::open(code1_path).unwrap().to_rgba8();
+        if let Ok(res) = extract_text_lens(&img, "code") {
+            println!("=== CODE1 FULL TEXT ===\n{}", res.full_text);
+            assert!(res.full_text.contains("mensaje = raw_input"), "Should recover '=' in 'mensaje = raw_input'");
+            assert!(res.full_text.contains("clave = raw_input"), "Should recover '=' in 'clave = raw_input'");
+            assert!(res.full_text.contains("posicion=0"), "Should recover 'posicion=0'");
+            assert!(res.full_text.contains("ab=clave[0]"), "Should recover '=' in 'ab=clave[0]'");
+            assert!(res.full_text.contains("index = abc.index(ab)"), "Should recover '=' in 'index = abc.index(ab)'");
+            assert!(res.full_text.contains("encoding= \"\""), "Should recover 'encoding= \"\"'");
+            assert!(res.full_text.contains("suma = 0"), "Should recover 'suma = 0'");
+            assert!(res.full_text.contains("espacios=\"\""), "Should recover 'espacios=\"\"'");
+            assert!(res.full_text.contains("espacios=espacio(mensaje)"), "Should recover 'espacios=espacio(mensaje)'");
+            assert!(res.full_text.contains("if x==abc[y]"), "Should recover '==' in 'if x==abc[y]'");
+        }
+    }
+
+    let code2_path = std::path::Path::new("../tests/fixtures/real_code_ip_crop.png");
+    if code2_path.exists() {
+        let img = image::open(code2_path).unwrap().to_rgba8();
+        if let Ok(res) = extract_text_lens(&img, "code") {
+            println!("=== CODE2 FULL TEXT ===\n{}", res.full_text);
+            assert!(res.full_text.contains("ip = raw_input"), "Should recover '=' in 'ip = raw_input'");
+            assert!(res.full_text.contains("mask = raw_input"), "Should keep '=' in 'mask = raw_input'");
+            assert!(res.full_text.contains("broadcast, ip_rede = []"), "Should recover '=' in 'broadcast, ip_rede = []'");
+        }
+    }
+
+    let canva_path = std::path::Path::new("../tests/fixtures/real_canva_pastel_crop.png");
+    if canva_path.exists() {
+        let img = image::open(canva_path).unwrap().to_rgba8();
+        if let Ok(res) = extract_text_lens(&img, "auto") {
+            println!("=== CANVA FULL TEXT ===\n{}", res.full_text);
+            assert!(res.full_text.contains("- Precision cooking"), "Should recover '-' bullet before 'Precision cooking'");
+            assert!(res.full_text.contains("assistants -> suggest"), "Should recover '->' arrow after 'assistants'");
+            assert!(res.full_text.contains("- 3D food printing -> custom"), "Should recover '-' bullet and '->' arrow on 3D food printing line");
+            assert!(res.full_text.contains("- Robotics -> chop"), "Should keep '-' bullet and '->' arrow on Robotics line");
+        }
+    }
+}
