@@ -23,35 +23,14 @@ struct LensInternalLine {
     words: Vec<LensInternalWord>,
 }
 
-/// Extracts text from an image crop using Google Lens Web API.
-/// Preserves native Google Lens word separators and spacing.
-pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, String> {
-    let _ = mode;
-    let (orig_w, orig_h) = (image.width() as f64, image.height() as f64);
-    if orig_w == 0.0 || orig_h == 0.0 {
-        return Ok(OcrResult {
-            full_text: String::new(),
-            lines: Vec::new(),
-            word_count: 0,
-            boxes: Vec::new(),
-            paragraphs: Vec::new(),
-        });
-    }
+fn get_lens_client() -> &'static chrome_lens_ocr::LensClient {
+    static CLIENT: std::sync::OnceLock<chrome_lens_ocr::LensClient> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| chrome_lens_ocr::LensClient::new(None))
+}
 
-    // 1. Add background-aware edge padding (16px) to protect symbols at crop boundaries (like '-' or '=')
-    let pad = 16.0f64;
-    let canvas_w = (orig_w + 2.0 * pad).round() as u32;
-    let canvas_h = (orig_h + 2.0 * pad).round() as u32;
-
-    let bg_pixel = estimate_border_bg(image);
-    let enhanced_crop = boost_chromatic_contrast(image, bg_pixel);
-    let pad_pixel = *enhanced_crop.get_pixel(0, 0);
-    let mut padded_canvas = RgbaImage::from_pixel(canvas_w, canvas_h, pad_pixel);
-    image::imageops::overlay(&mut padded_canvas, &enhanced_crop, pad as i64, pad as i64);
-
-    // 2. Smart scaling up to 1480px (Google Lens max dimension is 1500px):
-    // Enlarges small and medium crops (up to ~1050px) so 1px strokes ('=', '-', '->', '+') gain thickness,
-    // without ever downscaling medium crops (like 982x715).
+/// Encodes a padded canvas with smart upscaling (up to 1480px) into fast lossless PNG bytes.
+fn encode_canvas_for_lens(padded_canvas: &RgbaImage) -> Result<Vec<u8>, String> {
+    let (canvas_w, canvas_h) = (padded_canvas.width(), padded_canvas.height());
     let max_canvas_dim = canvas_w.max(canvas_h) as f64;
     let target_scale = if max_canvas_dim < 500.0 {
         (900.0 / max_canvas_dim).min(2.0)
@@ -63,41 +42,38 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         1.0f64
     };
 
-    let upload_image = if (target_scale - 1.0).abs() > 0.05 {
+    let resized;
+    let upload_image: &RgbaImage = if (target_scale - 1.0).abs() > 0.05 {
         let tw = (canvas_w as f64 * target_scale).round() as u32;
         let th = (canvas_h as f64 * target_scale).round() as u32;
-        image::imageops::resize(
-            &padded_canvas,
+        resized = image::imageops::resize(
+            padded_canvas,
             tw.max(1),
             th.max(1),
             image::imageops::FilterType::Lanczos3,
-        )
+        );
+        &resized
     } else {
         padded_canvas
     };
 
-    // Encode image to PNG bytes
     let mut bytes: Vec<u8> = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut bytes);
     upload_image
         .write_to(&mut cursor, image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode image for Google Lens: {e}"))?;
+        .map_err(|e| format!("Failed to encode PNG for Google Lens: {e}"))?;
+    Ok(bytes)
+}
 
-    // Call Google Lens OCR client with a bounded timeout (15 seconds)
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let res = tauri::async_runtime::block_on(async move {
-            let client = chrome_lens_ocr::LensClient::new(None);
-            client.process_image_bytes(&bytes, None).await
-        });
-        let _ = tx.send(res);
-    });
-
-    let lens_result = rx
-        .recv_timeout(Duration::from_secs(15))
-        .map_err(|_| "Google Lens request timed out".to_string())?
-        .map_err(|e| format!("Google Lens OCR failed: {e}"))?;
-
+/// Converts a raw `LensResult` into normalized, row-merged, sorted `LensInternalLine`s.
+fn parse_lens_lines(
+    lens_result: &chrome_lens_ocr::LensResult,
+    canvas_w: f64,
+    canvas_h: f64,
+    pad: f64,
+    orig_w: f64,
+    orig_h: f64,
+) -> Vec<LensInternalLine> {
     let mut raw_lines = Vec::new();
 
     for paragraph in &lens_result.paragraphs {
@@ -111,10 +87,10 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
                 }
 
                 let (wx, wy, ww, wh) = if let Some(geo) = &word.geometry {
-                    let w = (geo.width as f64) * (canvas_w as f64);
-                    let h = (geo.height as f64) * (canvas_h as f64);
-                    let cx = (geo.center_x as f64) * (canvas_w as f64) - pad;
-                    let cy = (geo.center_y as f64) * (canvas_h as f64) - pad;
+                    let w = (geo.width as f64) * canvas_w;
+                    let h = (geo.height as f64) * canvas_h;
+                    let cx = (geo.center_x as f64) * canvas_w - pad;
+                    let cy = (geo.center_y as f64) * canvas_h - pad;
                     let x = cx - w / 2.0;
                     let y = cy - h / 2.0;
                     (
@@ -144,10 +120,10 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
             line_words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
 
             let (lx, ly, lw, lh) = if let Some(geo) = &line.geometry {
-                let w = (geo.width as f64) * (canvas_w as f64);
-                let h = (geo.height as f64) * (canvas_h as f64);
-                let cx = (geo.center_x as f64) * (canvas_w as f64) - pad;
-                let cy = (geo.center_y as f64) * (canvas_h as f64) - pad;
+                let w = (geo.width as f64) * canvas_w;
+                let h = (geo.height as f64) * canvas_h;
+                let cx = (geo.center_x as f64) * canvas_w - pad;
+                let cy = (geo.center_y as f64) * canvas_h - pad;
                 let x = cx - w / 2.0;
                 let y = cy - h / 2.0;
                 (
@@ -174,17 +150,6 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         }
     }
 
-    if raw_lines.is_empty() {
-        return Ok(OcrResult {
-            full_text: String::new(),
-            lines: Vec::new(),
-            word_count: 0,
-            boxes: Vec::new(),
-            paragraphs: Vec::new(),
-        });
-    }
-
-    // 1. Merge horizontally-aligned line fragments on the same row (e.g. line numbers & code lines)
     let mut lines = raw_lines;
     loop {
         let mut merged_any = false;
@@ -205,15 +170,10 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
                 let center_diff = ((lines[i].y + lines[i].height * 0.5) - (lines[j].y + lines[j].height * 0.5)).abs();
 
                 if (v_overlap / min_h) >= 0.50 && center_diff <= (max_h * 0.35).max(min_h * 0.35) {
-                    let (left_idx, right_idx) = if lines[i].x <= lines[j].x {
-                        (i, j)
-                    } else {
-                        (j, i)
-                    };
+                    let (left_idx, right_idx) = if lines[i].x <= lines[j].x { (i, j) } else { (j, i) };
                     let left_end = lines[left_idx].x + lines[left_idx].width;
                     let gap = lines[right_idx].x - left_end;
 
-                    // Merge if they are side-by-side on the same visual line (up to column/gutter distance)
                     if gap >= -6.0 && gap <= 180.0 {
                         let mut right_words = lines.remove(right_idx).words;
                         if left_idx == i {
@@ -249,7 +209,6 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         }
     }
 
-    // 2. Sort lines top-to-bottom
     lines.sort_by(|a, b| {
         let diff = a.y - b.y;
         if diff.abs() > 4.0 {
@@ -259,7 +218,6 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
         }
     });
 
-    // 3. Prevent bounding box collisions between adjacent words in visual highlights
     for line in &mut lines {
         line.words.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
         for idx in 0..line.words.len().saturating_sub(1) {
@@ -269,6 +227,214 @@ pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, Str
                 line.words[idx].width = line.words[idx].width.min(max_w);
             }
         }
+    }
+
+    lines
+}
+
+/// Fuses OCR results from the filtered pass (`primary`) and unfiltered pass (`secondary`) using
+/// geometric bounding-box alignment: fills missing symbols/words in gaps without duplicating
+/// overlapping words, and upgrades weaker symbols when the complementary pass read a stronger one.
+fn merge_ocr_passes(mut primary: Vec<LensInternalLine>, secondary: Vec<LensInternalLine>) -> Vec<LensInternalLine> {
+    let is_strong_op = |t: &str| matches!(t, "=" | "==" | "+" | "->" | "!=" | "<=" | ">=");
+    let is_weak_sym = |t: &str| matches!(t, "-" | "–" | "~" | "." | "," | ":");
+
+    for s_line in secondary {
+        let match_idx = primary.iter().position(|p_line| {
+            let min_h = p_line.height.min(s_line.height);
+            if min_h <= 0.0 {
+                return false;
+            }
+            let top = p_line.y.max(s_line.y);
+            let bottom = (p_line.y + p_line.height).min(s_line.y + s_line.height);
+            let v_overlap = (bottom - top).max(0.0);
+            let center_diff = ((p_line.y + p_line.height * 0.5) - (s_line.y + s_line.height * 0.5)).abs();
+            (v_overlap / min_h) >= 0.45 || center_diff <= min_h * 0.45
+        }).or_else(|| {
+            // Fallback: catch slightly shifted duplicate lines that share content on the same visual row
+            primary.iter().position(|p_line| {
+                let max_h = p_line.height.max(s_line.height);
+                let center_diff = ((p_line.y + p_line.height * 0.5) - (s_line.y + s_line.height * 0.5)).abs();
+                if center_diff > max_h * 1.15 {
+                    return false;
+                }
+                let h_ov = (p_line.x + p_line.width).min(s_line.x + s_line.width) - p_line.x.max(s_line.x);
+                if h_ov <= 0.0 {
+                    return false;
+                }
+                s_line.words.iter().any(|sw| {
+                    sw.text.len() >= 3
+                        && p_line.words.iter().any(|pw| pw.text.eq_ignore_ascii_case(&sw.text))
+                })
+            })
+        });
+
+        let Some(p_idx) = match_idx else {
+            primary.push(s_line);
+            continue;
+        };
+
+        let p_line = &mut primary[p_idx];
+        for sw in s_line.words {
+            let sw_right = sw.x + sw.width;
+            let sw_cx = sw.x + sw.width * 0.5;
+
+            let overlap_idx = p_line.words.iter().position(|pw| {
+                let pw_right = pw.x + pw.width;
+                let ov = (pw_right.min(sw_right) - pw.x.max(sw.x)).max(0.0);
+                let min_w = pw.width.min(sw.width).max(1.0);
+                let pw_cx = pw.x + pw.width * 0.5;
+                (ov / min_w) >= 0.25 || (sw_cx - pw_cx).abs() <= min_w * 0.40
+            });
+
+            if let Some(wi) = overlap_idx {
+                let pw = &mut p_line.words[wi];
+                if pw.text != sw.text {
+                    if is_weak_sym(&pw.text) && is_strong_op(&sw.text) {
+                        pw.text = sw.text;
+                    } else if pw.text.contains('-') && sw.text.contains('=') && pw.text.replace('-', "=") == sw.text {
+                        pw.text = sw.text;
+                    } else if pw.text == "\"" && sw.text == "\"\"" {
+                        pw.text = sw.text;
+                    } else if pw.text.eq_ignore_ascii_case(&sw.text)
+                        && matches!(sw.text.as_str(), "for" | "if" | "elif" | "else" | "while" | "in" | "def" | "return" | "print")
+                    {
+                        pw.text = sw.text;
+                    }
+                }
+            } else {
+                // Skip if an identical word already sits right next to it (shifted box between passes)
+                let near_duplicate = p_line.words.iter().any(|pw| {
+                    if !pw.text.eq_ignore_ascii_case(&sw.text) {
+                        return false;
+                    }
+                    let pw_right = pw.x + pw.width;
+                    let gap = if sw.x >= pw_right {
+                        sw.x - pw_right
+                    } else if pw.x >= sw_right {
+                        pw.x - sw_right
+                    } else {
+                        0.0
+                    };
+                    gap <= pw.width.max(sw.width) * 1.5
+                });
+                if near_duplicate {
+                    continue;
+                }
+
+                // Missing token in primary pass — insert at sorted x position
+                let insert_pos = p_line.words.iter().position(|pw| pw.x > sw.x).unwrap_or(p_line.words.len());
+                p_line.words.insert(insert_pos, sw);
+                if insert_pos > 0 {
+                    let prev_right = p_line.words[insert_pos - 1].x + p_line.words[insert_pos - 1].width;
+                    let cur_x = p_line.words[insert_pos].x;
+                    if cur_x - prev_right >= 4.0 && p_line.words[insert_pos - 1].separator.is_empty() {
+                        p_line.words[insert_pos - 1].separator = " ".to_string();
+                    }
+                }
+            }
+        }
+
+        let min_x = p_line.words.iter().map(|w| w.x).fold(f64::INFINITY, f64::min);
+        let max_x = p_line.words.iter().map(|w| w.x + w.width).fold(f64::NEG_INFINITY, f64::max);
+        p_line.x = min_x;
+        p_line.width = (max_x - min_x).max(1.0);
+    }
+
+    primary.sort_by(|a, b| {
+        let diff = a.y - b.y;
+        if diff.abs() > 4.0 {
+            a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal)
+        } else {
+            a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal)
+        }
+    });
+
+    primary
+}
+
+/// Extracts text from an image crop using Google Lens Web API.
+/// Runs parallel OCR passes (color-enhanced/B&W + original) and fuses their geometric word boxes.
+pub fn extract_text_lens(image: &RgbaImage, mode: &str) -> Result<OcrResult, String> {
+    let _ = mode;
+    let (orig_w, orig_h) = (image.width() as f64, image.height() as f64);
+    if orig_w == 0.0 || orig_h == 0.0 {
+        return Ok(OcrResult {
+            full_text: String::new(),
+            lines: Vec::new(),
+            word_count: 0,
+            boxes: Vec::new(),
+            paragraphs: Vec::new(),
+        });
+    }
+
+    // 1. Run filtered pass and original pass completely in parallel (filter + encode + Google Lens HTTP)
+    let pad = 16.0f64;
+    let canvas_w = (orig_w + 2.0 * pad).round() as u32;
+    let canvas_h = (orig_h + 2.0 * pad).round() as u32;
+    let bg_pixel = estimate_border_bg(image);
+    let img_arc = std::sync::Arc::new(image.clone());
+
+    let (tx_enh, rx_enh) = std::sync::mpsc::channel();
+    let img_enh = std::sync::Arc::clone(&img_arc);
+    std::thread::spawn(move || {
+        let res: Result<chrome_lens_ocr::LensResult, String> = (|| {
+            let enhanced_crop = boost_chromatic_contrast(&img_enh, bg_pixel);
+            let enh_pad_pixel = *enhanced_crop.get_pixel(0, 0);
+            let mut enh_canvas = RgbaImage::from_pixel(canvas_w, canvas_h, enh_pad_pixel);
+            image::imageops::overlay(&mut enh_canvas, &enhanced_crop, pad as i64, pad as i64);
+            let enh_bytes = encode_canvas_for_lens(&enh_canvas)?;
+            tauri::async_runtime::block_on(async move {
+                get_lens_client()
+                    .process_image_bytes(&enh_bytes, None)
+                    .await
+                    .map_err(|e| format!("Google Lens OCR failed: {e}"))
+            })
+        })();
+        let _ = tx_enh.send(res);
+    });
+
+    let (tx_orig, rx_orig) = std::sync::mpsc::channel();
+    let img_orig = std::sync::Arc::clone(&img_arc);
+    std::thread::spawn(move || {
+        let res: Result<chrome_lens_ocr::LensResult, String> = (|| {
+            let mut orig_canvas = RgbaImage::from_pixel(canvas_w, canvas_h, bg_pixel);
+            image::imageops::overlay(&mut orig_canvas, img_orig.as_ref(), pad as i64, pad as i64);
+            let orig_bytes = encode_canvas_for_lens(&orig_canvas)?;
+            tauri::async_runtime::block_on(async move {
+                get_lens_client()
+                    .process_image_bytes(&orig_bytes, None)
+                    .await
+                    .map_err(|e| format!("Google Lens OCR failed: {e}"))
+            })
+        })();
+        let _ = tx_orig.send(res);
+    });
+
+    let enh_res = rx_enh.recv_timeout(Duration::from_secs(15));
+    let orig_res = rx_orig.recv_timeout(Duration::from_secs(15));
+
+    let (cw_f, ch_f) = (canvas_w as f64, canvas_h as f64);
+    let mut lines = match (enh_res, orig_res) {
+        (Ok(Ok(e)), Ok(Ok(o))) => {
+            let enh_lines = parse_lens_lines(&e, cw_f, ch_f, pad, orig_w, orig_h);
+            let orig_lines = parse_lens_lines(&o, cw_f, ch_f, pad, orig_w, orig_h);
+            merge_ocr_passes(enh_lines, orig_lines)
+        }
+        (Ok(Ok(e)), _) => parse_lens_lines(&e, cw_f, ch_f, pad, orig_w, orig_h),
+        (_, Ok(Ok(o))) => parse_lens_lines(&o, cw_f, ch_f, pad, orig_w, orig_h),
+        (Ok(Err(e)), _) => return Err(e),
+        (Err(_), _) => return Err("Google Lens request timed out".to_string()),
+    };
+
+    if lines.is_empty() {
+        return Ok(OcrResult {
+            full_text: String::new(),
+            lines: Vec::new(),
+            word_count: 0,
+            boxes: Vec::new(),
+            paragraphs: Vec::new(),
+        });
     }
 
     // 4. Estimate character width and base code margin
@@ -817,24 +983,28 @@ fn boost_chromatic_contrast(image: &RgbaImage, bg: image::Rgba<u8>) -> RgbaImage
     let bg_y = 0.299 * bg_r + 0.587 * bg_g + 0.114 * bg_b;
     let is_dark = bg_y < 128.0;
 
-    // Step 1: Measure Euclidean chromatic distance of candidate stroke pixels
-    let mut stroke_dists = Vec::new();
-    for y in 0..h {
-        for x in 0..w {
+    // Step 1: Measure Euclidean chromatic distance of candidate stroke pixels (subsampled 3x3 for O(N/9) speed)
+    let mut stroke_dists = Vec::with_capacity(((w * h) / 36) as usize);
+    let step = if w > 120 && h > 120 { 3 } else { 1 };
+    for y in (0..h).step_by(step) {
+        for x in (0..w).step_by(step) {
             let p = image.get_pixel(x, y);
             let dr = (p[0] as f32) - bg_r;
             let dg = (p[1] as f32) - bg_g;
             let db = (p[2] as f32) - bg_b;
-            let d = (dr * dr + dg * dg + db * db).sqrt();
-            if d > 18.0 {
-                stroke_dists.push(d);
+            let d_sq = dr * dr + dg * dg + db * db;
+            if d_sq > 324.0 {
+                stroke_dists.push(d_sq.sqrt());
             }
         }
     }
 
     let fg_peak = if stroke_dists.len() >= 8 {
-        stroke_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        stroke_dists[(stroke_dists.len() * 90) / 100]
+        let nth = (stroke_dists.len() * 90) / 100;
+        let (_, val, _) = stroke_dists.select_nth_unstable_by(nth, |a, b| {
+            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        *val
     } else {
         200.0
     };
@@ -846,52 +1016,47 @@ fn boost_chromatic_contrast(image: &RgbaImage, bg: image::Rgba<u8>) -> RgbaImage
         let noise_floor = 16.0f32;
         let target_fg = (fg_peak * 0.85).max(32.0);
         let denom = (target_fg - noise_floor).max(10.0);
-        for y in 0..h {
-            for x in 0..w {
-                let p = image.get_pixel(x, y);
-                let dr = (p[0] as f32) - bg_r;
-                let dg = (p[1] as f32) - bg_g;
-                let db = (p[2] as f32) - bg_b;
-                let d = (dr * dr + dg * dg + db * db).sqrt();
-                let t = ((d - noise_floor) / denom).clamp(0.0, 1.0);
-                let v = (255.0 * (1.0 - t)).round() as u8;
-                out.put_pixel(x, y, image::Rgba([v, v, v, 255]));
-            }
+        for (src, dst) in image.as_raw().chunks_exact(4).zip(out.as_mut().chunks_exact_mut(4)) {
+            let dr = (src[0] as f32) - bg_r;
+            let dg = (src[1] as f32) - bg_g;
+            let db = (src[2] as f32) - bg_b;
+            let d = (dr * dr + dg * dg + db * db).sqrt();
+            let t = ((d - noise_floor) / denom).clamp(0.0, 1.0);
+            let v = (255.0 * (1.0 - t)).round() as u8;
+            dst[0] = v;
+            dst[1] = v;
+            dst[2] = v;
+            dst[3] = 255;
         }
         return out;
     }
 
     // Step 2b: Multi-color code / standard contrast — boost low-luminance chromatic glyphs
     let mut out = image.clone();
-    for y in 0..h {
-        for x in 0..w {
-            let p = image.get_pixel(x, y);
-            let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
-            if is_dark {
-                let dr = (r - bg_r).max(0.0);
-                let dg = (g - bg_g).max(0.0);
-                let db = (b - bg_b).max(0.0);
-                // Specifically lift saturated red/pink/magenta/purple glyphs where green is low
-                let chroma = dr.max(db) - dg;
-                if chroma > 20.0 {
-                    let lift = (chroma - 20.0) * 0.68;
-                    let nr = (r + lift * 0.60).min(255.0) as u8;
-                    let ng = (g + lift).min(255.0) as u8;
-                    let nb = (b + lift * 0.80).min(255.0) as u8;
-                    out.put_pixel(x, y, image::Rgba([nr, ng, nb, p[3]]));
-                }
-            } else {
-                let dr = (r - bg_r).abs();
-                let dg = (g - bg_g).abs();
-                let db = (b - bg_b).abs();
-                let d_max = dr.max(dg).max(db);
-                if d_max > 20.0 {
-                    let drop = (d_max - 20.0) * 0.55;
-                    let nr = (r - drop).max(0.0) as u8;
-                    let ng = (g - drop).max(0.0) as u8;
-                    let nb = (b - drop).max(0.0) as u8;
-                    out.put_pixel(x, y, image::Rgba([nr, ng, nb, p[3]]));
-                }
+    for p in out.as_mut().chunks_exact_mut(4) {
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        if is_dark {
+            let dr = (r - bg_r).max(0.0);
+            let dg = (g - bg_g).max(0.0);
+            let db = (b - bg_b).max(0.0);
+            // Specifically lift saturated red/pink/magenta/purple glyphs where green is low
+            let chroma = dr.max(db) - dg;
+            if chroma > 20.0 {
+                let lift = (chroma - 20.0) * 0.68;
+                p[0] = (r + lift * 0.60).min(255.0) as u8;
+                p[1] = (g + lift).min(255.0) as u8;
+                p[2] = (b + lift * 0.80).min(255.0) as u8;
+            }
+        } else {
+            let dr = (r - bg_r).abs();
+            let dg = (g - bg_g).abs();
+            let db = (b - bg_b).abs();
+            let d_max = dr.max(dg).max(db);
+            if d_max > 20.0 {
+                let drop = (d_max - 20.0) * 0.55;
+                p[0] = (r - drop).max(0.0) as u8;
+                p[1] = (g - drop).max(0.0) as u8;
+                p[2] = (b - drop).max(0.0) as u8;
             }
         }
     }
