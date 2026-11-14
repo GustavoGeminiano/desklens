@@ -1,7 +1,7 @@
 {
   "name": "desklens",
   "private": true,
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "DeskLens - Google Lens for Desktop (Windows & Linux)",
   "scripts": {
     "tauri": "tauri",

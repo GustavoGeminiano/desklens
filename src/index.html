@@ -74,6 +74,9 @@
             <button id="search-action-btn" class="action-btn primary" title="Search with Google Lens">
               <span>🔍</span> Search Image
             </button>
+            <button id="ocr-action-btn" class="action-btn secondary" title="Extract text via OCR">
+              <span>📝</span> Copy Text
+            </button>
             <div id="lang-selector-group" class="lang-selector-group" title="Language Translation Pair" aria-label="Language Translation Pair">
               <select id="source-lang-select" class="lang-select" title="Source Language" aria-label="Source Language">
                 <option value="auto" selected>Auto Detect</option>
@@ -110,9 +113,6 @@
               <option value="text">Text</option>
               <option value="code">Code</option>
             </select>
-            <button id="ocr-action-btn" class="action-btn secondary" title="Extract text via OCR">
-              <span>📝</span> Copy Text
-            </button>
             <div class="ocr-feedback">
               <span id="ocr-status" role="status" aria-live="polite"></span>
               <button id="ocr-retry-btn" class="action-btn secondary">Retry</button>

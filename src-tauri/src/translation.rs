@@ -297,8 +297,20 @@ fn build_grouped_input_box(
     }
 }
 
+fn shared_translation_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_idle_timeout(Duration::from_secs(90))
+            .connect_timeout(Duration::from_millis(4000))
+            .timeout(Duration::from_millis(8000))
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 /// Translates a single chunk of texts using Google Translate dict-chrome-ex endpoint.
-/// Returns translated strings and detected source language.
+/// Returns translated strings and dominant detected source language across all blocks.
 async fn translate_chunk_google(
     client: &reqwest::Client,
     texts: &[String],
@@ -321,27 +333,47 @@ async fn translate_chunk_google(
     }
     let body_str = parts.join("&");
 
-    let response = client
-        .post(url)
-        .header(
-            "User-Agent",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        )
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body_str)
-        .timeout(Duration::from_millis(1800))
-        .send()
-        .await
-        .map_err(|e| format!("HTTP request failed: {e}"))?;
+    let mut last_err = String::new();
+    let mut body = String::new();
+    for attempt in 0..2 {
+        let req = client
+            .post(url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            )
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body_str.clone())
+            .timeout(Duration::from_millis(4500))
+            .send()
+            .await;
 
-    if !response.status().is_success() {
-        return Err(format!("Google Translate HTTP status: {}", response.status()));
+        match req {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    last_err = format!("Google Translate HTTP status: {}", response.status());
+                } else {
+                    match response.text().await {
+                        Ok(text_body) => {
+                            body = text_body;
+                            last_err.clear();
+                            break;
+                        }
+                        Err(e) => {
+                            last_err = format!("Failed to read response body: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                last_err = format!("HTTP request failed (attempt {}): {e}", attempt + 1);
+            }
+        }
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response body: {e}"))?;
+    if !last_err.is_empty() {
+        return Err(last_err);
+    }
 
     let json: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| format!("JSON parse failed: {e} - body: {body}"))?;
@@ -351,7 +383,8 @@ async fn translate_chunk_google(
         .ok_or_else(|| "Google Translate response is not an array".to_string())?;
 
     let mut translated = Vec::with_capacity(texts.len());
-    let mut detected_lang: Option<String> = None;
+    let mut lang_weights: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut lang_first_order: Vec<String> = Vec::new();
 
     for (idx, item) in array.iter().enumerate() {
         if let Some(pair) = item.as_array() {
@@ -362,12 +395,17 @@ async fn translate_chunk_google(
                     translated.push(trans_str.to_string());
                 }
 
-                if detected_lang.is_none() {
-                    if let Some(det) = pair.get(1).and_then(|v| v.as_str()) {
-                        let det_clean = det.trim();
-                        if !det_clean.is_empty() {
-                            detected_lang = Some(det_clean.to_lowercase());
+                if let Some(det) = pair.get(1).and_then(|v| v.as_str()) {
+                    let det_clean = det.trim().to_lowercase();
+                    if !det_clean.is_empty() {
+                        let weight = texts
+                            .get(idx)
+                            .map(|s| s.chars().filter(|c| c.is_alphabetic()).count().max(1))
+                            .unwrap_or(1);
+                        if !lang_weights.contains_key(&det_clean) {
+                            lang_first_order.push(det_clean.clone());
                         }
+                        *lang_weights.entry(det_clean).or_insert(0) += weight;
                     }
                 }
                 continue;
@@ -385,6 +423,77 @@ async fn translate_chunk_google(
 
     while translated.len() < texts.len() {
         translated.push(texts[translated.len()].clone());
+    }
+
+    let non_target_source = lang_first_order
+        .iter()
+        .filter(|lang| !lang.eq_ignore_ascii_case(target_lang))
+        .max_by_key(|lang| lang_weights.get(*lang).copied().unwrap_or(0))
+        .cloned();
+
+    let detected_lang = lang_first_order
+        .into_iter()
+        .max_by_key(|lang| lang_weights.get(lang).copied().unwrap_or(0));
+
+    // When `source_lang == "auto"` on a mixed-language selection (e.g. Portuguese text mixed with
+    // English brand names), Google Translate may classify a mixed block as `target_lang` and leave
+    // it untranslated. Re-translate any unchanged alphabetic blocks using the dominant non-target
+    // language detected in the selection.
+    if source_lang == "auto" {
+        if let Some(ref dom_src) = non_target_source {
+            let retry_indices: Vec<usize> = (0..texts.len())
+                .filter(|&i| {
+                    let orig = texts[i].trim();
+                    let trans = translated[i].trim();
+                    orig == trans && orig.chars().filter(|c| c.is_alphabetic()).count() >= 4
+                })
+                .collect();
+
+            if !retry_indices.is_empty() {
+                let mut retry_parts: Vec<String> = Vec::with_capacity(retry_indices.len() + 2);
+                retry_parts.push(format!("sl={}", url_encode(dom_src)));
+                retry_parts.push(format!("tl={}", url_encode(target_lang)));
+                for &idx in &retry_indices {
+                    retry_parts.push(format!("q={}", url_encode(&texts[idx])));
+                }
+                if let Ok(resp) = client
+                    .post(url)
+                    .header(
+                        "User-Agent",
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                    )
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(retry_parts.join("&"))
+                    .timeout(Duration::from_millis(3500))
+                    .send()
+                    .await
+                {
+                    if resp.status().is_success() {
+                        if let Ok(retry_body) = resp.text().await {
+                            if let Ok(retry_json) = serde_json::from_str::<serde_json::Value>(&retry_body) {
+                                if let Some(retry_arr) = retry_json.as_array() {
+                                    for (r_idx, item) in retry_arr.iter().enumerate() {
+                                        if let Some(&orig_idx) = retry_indices.get(r_idx) {
+                                            let candidate = item
+                                                .as_array()
+                                                .and_then(|p| p.first())
+                                                .and_then(|v| v.as_str())
+                                                .or_else(|| item.as_str());
+                                            if let Some(c_str) = candidate {
+                                                let trimmed = c_str.trim();
+                                                if !trimmed.is_empty() {
+                                                    translated[orig_idx] = c_str.to_string();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok((translated, detected_lang))
@@ -407,7 +516,7 @@ async fn translate_single_mymemory(
 
     let response = client
         .get(&url)
-        .timeout(Duration::from_millis(1000))
+        .timeout(Duration::from_millis(3000))
         .send()
         .await
         .map_err(|e| format!("MyMemory request error: {e}"))?;
@@ -576,7 +685,7 @@ async fn translate_all_chunks(
     let mut results = Vec::with_capacity(texts.len());
     let mut detected_source_lang: Option<String> = None;
     let start_time = std::time::Instant::now();
-    let max_budget = std::time::Duration::from_millis(2800);
+    let max_budget = std::time::Duration::from_millis(8000);
 
     for chunk in texts.chunks(CHUNK_SIZE) {
         if start_time.elapsed() >= max_budget {
@@ -648,11 +757,7 @@ pub async fn translate_on_screen(
 
     let target = normalize_target_lang(target_lang.as_deref());
     let source = normalize_source_lang(source_lang.as_deref());
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_millis(1500))
-        .timeout(Duration::from_millis(2800))
-        .build()
-        .unwrap_or_default();
+    let client = shared_translation_client();
 
     // Group adjacent lines into cohesive paragraphs when appropriate
     let (grouped_inputs, is_para_flags) = cluster_translation_boxes(&boxes);
