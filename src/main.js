@@ -118,19 +118,28 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Helper to switch view modes
   function setViewMode(mode) {
     if (mode === "overlay") {
+      overlayView.classList.remove("overlay-entering");
       overlayView.classList.remove("hidden");
+      void overlayView.offsetWidth;
+      overlayView.classList.add("overlay-entering");
       settingsView.classList.add("hidden");
-    } else {
+    } else if (mode === "settings") {
       clearSelection();
+      overlayView.classList.remove("overlay-entering");
       overlayView.classList.add("hidden");
       settingsView.classList.remove("hidden");
+    } else {
+      clearSelection();
+      overlayView.classList.remove("overlay-entering");
+      overlayView.classList.add("hidden");
+      settingsView.classList.add("hidden");
     }
   }
 
   // Dismiss overlay and return to hidden background mode
   async function hideOverlay() {
     clearSelection();
-    setViewMode("settings");
+    setViewMode("hidden");
     if (window.__TAURI__?.core?.invoke) {
       await window.__TAURI__.core.invoke("hide_overlay");
     } else if (window.__TAURI__?.window) {
@@ -1254,20 +1263,32 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (frozenImage && event.payload) {
         clearSelection();
         const generation = selectionGeneration;
-        frozenImage.onload = () => {
+        frozenImage.onload = async () => {
+          if (!isCurrent(generation)) return;
+          if (typeof frozenImage.decode === "function") {
+            try {
+              await frozenImage.decode();
+            } catch {
+              // Fall back to onload paint timing if decode() rejects
+            }
+          }
           if (!isCurrent(generation)) return;
           setViewMode("overlay");
+          if (window.__TAURI__?.core?.invoke) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (!isCurrent(generation)) return;
+                window.__TAURI__.core.invoke("reveal_overlay_window").catch(() => {});
+              });
+            });
+          }
         };
         frozenImage.src = event.payload;
       }
     });
 
     await window.__TAURI__.event.listen("view-mode", (event) => {
-      if (event.payload === "overlay") {
-        setViewMode("overlay");
-      } else {
-        setViewMode("settings");
-      }
+      setViewMode(event.payload);
     });
   }
 });

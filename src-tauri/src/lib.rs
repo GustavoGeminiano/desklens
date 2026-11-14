@@ -274,16 +274,52 @@ fn copy_file_to_os_clipboard(temp_path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-/// Closes the fullscreen overlay and hides the main window back to the background.
+/// Closes the overlay and hides the main window without resizing or triggering fullscreen transitions.
 #[tauri::command]
 async fn hide_overlay(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
         let _ = window.set_always_on_top(false);
-        let _ = window.set_fullscreen(false);
-        let _ = window.set_decorations(true);
-        let _ = window.set_size(tauri::LogicalSize::new(520.0, 400.0));
-        let _ = window.center();
         let _ = window.hide();
+    }
+    Ok(())
+}
+
+/// Disables or re-enables Windows DWM open/close transitions so the overlay appears instantaneously.
+#[cfg(target_os = "windows")]
+fn set_dwm_transitions_disabled(window: &tauri::WebviewWindow, disabled: bool) {
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(
+            hwnd: *mut std::ffi::c_void,
+            dw_attribute: u32,
+            pv_attribute: *const std::ffi::c_void,
+            cb_attribute: u32,
+        ) -> i32;
+    }
+    const DWMWA_TRANSITIONS_FORCEDISABLED: u32 = 3;
+    if let Ok(hwnd) = window.hwnd() {
+        let val: i32 = if disabled { 1 } else { 0 };
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd.0 as *mut std::ffi::c_void,
+                DWMWA_TRANSITIONS_FORCEDISABLED,
+                (&val as *const i32).cast(),
+                std::mem::size_of::<i32>() as u32,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_dwm_transitions_disabled(_window: &tauri::WebviewWindow, _disabled: bool) {}
+
+/// Reveals the pre-sized borderless overlay window after the frontend has painted the captured frame.
+#[tauri::command]
+async fn reveal_overlay_window(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.set_always_on_top(true);
+        let _ = window.show();
+        let _ = window.set_focus();
     }
     Ok(())
 }
@@ -600,17 +636,13 @@ async fn search_google_lens(
     // Snapshot the selection before view-mode listeners clear its session.
     let temp_path = write_crop_to_temp_file(&state)?;
 
-    // 1. Immediately hide the fullscreen overlay so the user never has to press ESC
+    // 1. Immediately hide the overlay so the user never has to press ESC
     //    and the always-on-top window never blocks the browser from taking focus.
     if let Some(window) = app_handle.get_webview_window("main") {
         let _ = window.set_always_on_top(false);
-        let _ = window.set_fullscreen(false);
-        let _ = window.set_decorations(true);
-        let _ = window.set_size(tauri::LogicalSize::new(520.0, 400.0));
-        let _ = window.center();
         let _ = window.hide();
     }
-    let _ = app_handle.emit("view-mode", "settings");
+    let _ = app_handle.emit("view-mode", "hidden");
 
     let _ = copy_file_to_os_clipboard(&temp_path);
 
@@ -884,7 +916,7 @@ fn start_ipc_listener(app_handle: tauri::AppHandle) {
     });
 }
 
-/// Triggers screen capture and presents the fullscreen interactive overlay.
+/// Triggers screen capture and prepares the borderless overlay window without fullscreen flicker.
 fn capture_and_display_overlay(app_handle: &tauri::AppHandle) {
     if let Some(window) = app_handle.get_webview_window("main") {
         // Hide results panel before capturing so it doesn't obstruct the screen
@@ -892,7 +924,16 @@ fn capture_and_display_overlay(app_handle: &tauri::AppHandle) {
             let _ = results_win.hide();
         }
 
-        // 1. Capture clean screen before opening overlay
+        // If the overlay is already open, hide it cleanly first so the new screenshot
+        // captures the real desktop underneath instead of the previous DeskLens overlay.
+        if window.is_visible().unwrap_or(false) {
+            let _ = window.set_always_on_top(false);
+            let _ = window.hide();
+            let _ = app_handle.emit("view-mode", "hidden");
+            std::thread::sleep(std::time::Duration::from_millis(120));
+        }
+
+        // 1. Capture clean screen before preparing the overlay window
         match capture_screen_raw() {
             Ok(raw_image) => {
                 if let Ok(data_url) = encode_png_data_url(&raw_image) {
@@ -900,21 +941,28 @@ fn capture_and_display_overlay(app_handle: &tauri::AppHandle) {
                     if let Some(state) = app_handle.try_state::<AppState>() {
                         if let Ok(mut lock) = state.current_screenshot.lock() {
                             *lock = Some(raw_image);
-            state.ocr.clear();
+                            state.ocr.clear();
                         }
                     }
 
-                    // 2. Broadcast captured image globally to frontend
-                    let _ = app_handle.emit("screenshot-captured", &data_url);
-                    let _ = app_handle.emit("view-mode", "overlay");
-
-                    // 3. Show window first so GTK realizes it properly before entering fullscreen
+                    // 2. Configure borderless monitor-sized geometry while still hidden
+                    //    (avoids Windows fullscreen mode flicker and 520x400 proportion jump).
+                    set_dwm_transitions_disabled(&window, true);
                     let _ = window.set_decorations(false);
-                    let _ = window.show();
-                    let _ = window.set_fullscreen(true);
-                    let _ = window.set_always_on_top(true);
-                    let _ = window.set_focus();
-                    println!("✨ [DeskLens] Screen captured and overlay active.");
+                    let _ = window.set_shadow(false);
+                    let _ = window.set_skip_taskbar(true);
+                    if let Ok(Some(monitor)) = window.primary_monitor() {
+                        let _ = window.set_fullscreen(false);
+                        let _ = window.set_position(tauri::Position::Physical(*monitor.position()));
+                        let _ = window.set_size(tauri::Size::Physical(*monitor.size()));
+                    } else {
+                        let _ = window.set_fullscreen(true);
+                    }
+
+                    // 3. Send screenshot to frontend; frontend calls `reveal_overlay_window`
+                    //    after decoding and painting the frame so no blank box ever flashes.
+                    let _ = app_handle.emit("screenshot-captured", &data_url);
+                    println!("✨ [DeskLens] Screen captured and overlay staged.");
                 }
             }
             Err(err) => {
@@ -963,6 +1011,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             hide_overlay,
+            reveal_overlay_window,
             trigger_capture,
             crop_selection,
             get_latest_crop,
@@ -1045,7 +1094,11 @@ pub fn run() {
                     "settings" => {
                         println!("⚙️ [DeskLens] Opening Settings window...");
                         if let Some(window) = app.get_webview_window("main") {
+                            set_dwm_transitions_disabled(&window, false);
+                            let _ = window.set_always_on_top(false);
                             let _ = window.set_fullscreen(false);
+                            let _ = window.set_skip_taskbar(false);
+                            let _ = window.set_shadow(true);
                             let _ = window.set_decorations(true);
                             let _ = window.set_size(tauri::LogicalSize::new(520.0, 400.0));
                             let _ = window.center();
